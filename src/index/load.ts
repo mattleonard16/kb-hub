@@ -4,7 +4,7 @@ import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { ConceptFrontmatter, SkillFrontmatter } from "../schema/concept.ts";
 
 export type Concept = {
-  /** Path under knowledge/ without .md, e.g. "profile/reply-length". */
+  /** Path under wiki/ without .md, e.g. "profile/reply-length". */
   id: string;
   meta: ConceptFrontmatter;
   body: string;
@@ -39,7 +39,7 @@ export async function loadKnowledge(root: string): Promise<Knowledge> {
   const concepts: Concept[] = [];
   const skills: Skill[] = [];
   const invalid: string[] = [];
-  const kdir = join(root, "knowledge");
+  const kdir = join(root, "wiki");
 
   for (const file of await walk(kdir)) {
     if (!file.endsWith(".md")) continue;
@@ -48,7 +48,7 @@ export async function loadKnowledge(root: string): Promise<Knowledge> {
     const parsed = parseFrontmatter(await readFile(file, "utf8"));
     const meta = parsed.ok ? ConceptFrontmatter.safeParse(parsed.data) : null;
     if (!parsed.ok || !meta?.success) {
-      invalid.push(`knowledge/${id}.md`);
+      invalid.push(`wiki/${id}.md`);
       continue;
     }
     const mtime = (await stat(file)).mtime.toISOString();

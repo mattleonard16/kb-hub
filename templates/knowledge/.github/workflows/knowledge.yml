@@ -20,18 +20,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/checkout@v4
         with: { repository: "${{ env.KB_HUB_REPO }}", ref: "${{ env.KB_HUB_REF }}", path: .kb-hub }
       - uses: oven-sh/setup-bun@v2
         with: { bun-version: 1.4.4 }
       - run: cd .kb-hub && bun install --frozen-lockfile
       - run: bun .kb-hub/src/cli.ts lint --dir .
+      # raw/ is write-once: a PR may add raw sources but never change or delete one.
+      - name: raw/ is unchanged
+        run: |
+          changed=$(git diff --name-only --diff-filter=MDR origin/${{ github.base_ref }}...HEAD -- raw/)
+          if [ -n "$changed" ]; then echo "These raw sources were changed or deleted:"; echo "$changed"; exit 1; fi
       - uses: gitleaks/gitleaks-action@v2
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
 
   # The owner adds the `approve` label to a curator PR: mark touched concepts verified, drafts stable.
+  # What counts is who added the label (the curator, not the owner, opens the PR), and the branch
+  # must live in this repo, not a fork.
   promote:
-    if: github.event.action == 'labeled' && github.event.label.name == 'approve' && github.event.pull_request.user.login == github.repository_owner
+    if: >-
+      github.event.action == 'labeled' && github.event.label.name == 'approve' &&
+      github.event.sender.login == github.repository_owner &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,14 +54,15 @@ jobs:
       - run: cd .kb-hub && bun install --frozen-lockfile
       - name: Promote
         run: |
-          files=$(git diff --name-only --diff-filter=AM origin/${{ github.base_ref }}...HEAD -- 'knowledge/*.md')
+          files=$(git diff --name-only --diff-filter=AM origin/${{ github.base_ref }}...HEAD -- 'wiki/*.md')
           [ -z "$files" ] && exit 0
-          bun .kb-hub/src/cli.ts promote $files --by "human:${{ github.event.sender.login }}"
+          bun .kb-hub/src/cli.ts promote $files --dir . --by "human:${{ github.event.sender.login }}"
+          bun .kb-hub/src/cli.ts index --dir .
           bun .kb-hub/src/cli.ts lint --dir .
           bun .kb-hub/src/cli.ts compile --dir .
           git config user.name "kb-hub"
           git config user.email "kb-hub@users.noreply.github.com"
-          git add knowledge build
+          git add wiki build
           git commit -m "Promote approved concepts and recompile build/" || exit 0
           git push
 

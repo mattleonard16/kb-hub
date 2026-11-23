@@ -41,7 +41,7 @@ function fakeGitHub(zip: () => Uint8Array, status = 200) {
 }
 
 describe("knowledge snapshot from a GitHub zipball", () => {
-  test("unpacks only knowledge/ and skills/, and the result loads", async () => {
+  test("unpacks only wiki/ and skills/, and the result loads", async () => {
     const zip = await fixtureZip({
       "me-knowledge-abc123/inbox/flags/x.yaml": "kind: missing\n",
       "me-knowledge-abc123/.github/workflows/k.yml": "on: push\n",
@@ -52,14 +52,14 @@ describe("knowledge snapshot from a GitHub zipball", () => {
       const r = await fetchSnapshot({ repo: "me/knowledge", token: "tok", dest, apiBase: gh.api });
       expect(r.ref).toBe("main");
       expect(gh.seen[0]).toEqual({ path: "/repos/me/knowledge/zipball/main", auth: "Bearer tok" });
-      expect((await readdir(dest)).sort()).toEqual([SNAPSHOT_MARKER, "knowledge", "skills"]);
+      expect((await readdir(dest)).sort()).toEqual([SNAPSHOT_MARKER, "skills", "wiki"]);
       const k = await loadKnowledge(dest);
-      expect(k.concepts.length).toBe(5);
+      expect(k.concepts.length).toBe(7);
       expect(k.skills.length).toBe(1);
 
       // A second fetch (the webhook) swaps in the new copy.
       await fetchSnapshot({ repo: "me/knowledge", token: "tok", dest, apiBase: gh.api });
-      expect((await loadKnowledge(dest)).concepts.length).toBe(5);
+      expect((await loadKnowledge(dest)).concepts.length).toBe(7);
     } finally {
       gh.server.stop();
     }
@@ -82,7 +82,7 @@ describe("knowledge snapshot from a GitHub zipball", () => {
       await expect(
         fetchSnapshot({ repo: "me/knowledge", token: "t", dest, apiBase: bad.api }),
       ).rejects.toThrow("failed with 404");
-      expect((await loadKnowledge(dest)).concepts.length).toBe(5);
+      expect((await loadKnowledge(dest)).concepts.length).toBe(7);
       await expect(
         fetchSnapshot({ repo: "../evil", token: "t", dest, apiBase: ok.api }),
       ).rejects.toThrow("bad repo name");

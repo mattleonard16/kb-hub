@@ -8,7 +8,7 @@ sensitivity: personal
 confidence: high
 tags: [revenue, arr, finance]
 sources:
-  - resource: inbox/processed/2026-11-22-claude-code.yaml
+  - resource: raw/2026-11-22-claude-code.yaml
     origin: project_files
 verified: [{ by: "human:matt", at: 2026-11-24 }]
 ---

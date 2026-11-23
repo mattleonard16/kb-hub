@@ -53,6 +53,7 @@ describe("MCP server", () => {
   test("lists only the tools a client's scopes allow", async () => {
     const full = await connect();
     expect((await full.mcp.listTools()).tools.map((t) => t.name).sort()).toEqual([
+      "add_source",
       "flag_knowledge",
       "get_concept",
       "ingest",
@@ -88,7 +89,7 @@ describe("MCP server", () => {
 
   test("get_concept returns body and sources; unknown ids suggest alternatives", async () => {
     const { call } = await connect();
-    const ok = await call("get_concept", { id: "knowledge/profile/reply-length.md" });
+    const ok = await call("get_concept", { id: "wiki/profile/reply-length.md" });
     expect(ok.structuredContent).toMatchObject({
       id: "profile/reply-length",
       verified: true,
@@ -117,6 +118,40 @@ describe("MCP server", () => {
       reported_by: string;
     };
     expect(stored.reported_by).toBe("test-client");
+  });
+
+  test("add_source queues a source under the client's name and refuses secrets", async () => {
+    const { call, root } = await connect();
+    const r = await call("add_source", {
+      kind: "answer",
+      title: "Why Cloud Run",
+      text: "Cloud Run runs the same container and scales to zero.",
+    });
+    const sc = r.structuredContent as { path: string; created: boolean };
+    expect(sc.created).toBe(true);
+    expect(sc.path).toMatch(
+      /^inbox\/sources\/\d{4}-\d{2}-\d{2}-test-client-answer-[0-9a-f]{12}-why-cloud-run\.md$/,
+    );
+    expect(await Bun.file(join(root, sc.path)).text()).toBe(
+      "Cloud Run runs the same container and scales to zero.",
+    );
+    const bad = await call("add_source", {
+      kind: "note",
+      title: "x",
+      text: "ghp_abcdefghijklmnopqrstuvwxyz0123456789AB",
+    });
+    expect(bad.isError).toBe(true);
+    expect(bad.content[0]?.text).toContain("secret");
+  });
+
+  test("get_concept returns links and backlinks", async () => {
+    const { call } = await connect();
+    const r = await call("get_concept", { id: "projects/kb-hub" });
+    expect(r.structuredContent).toMatchObject({
+      links: ["topics/llm-wiki"],
+      backlinks: ["sources/2026-11-22-kb-hub-planning", "topics/llm-wiki"],
+    });
+    expect(r.content[0]?.text).toContain("Linked from: sources/2026-11-22-kb-hub-planning");
   });
 
   test("flags with secrets are refused; injection is marked", async () => {
@@ -190,9 +225,9 @@ describe("MCP server", () => {
     expect(text).toContain("No emoji");
     expect(text).not.toContain("Peanut");
     await Bun.write(
-      join(root, "knowledge/profile/new.md"),
+      join(root, "wiki/profile/new.md"),
       "---\ntype: fact\ntitle: New fact\nscope: global\nstatus: draft\nsensitivity: public\nconfidence: low\nsources:\n  - resource: inbox/x.yaml\n---\nNew.\n",
     );
-    expect((await holder.reload()).concepts).toBe(6);
+    expect((await holder.reload()).concepts).toBe(8);
   });
 });

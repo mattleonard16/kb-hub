@@ -6,7 +6,7 @@ status: stable
 sensitivity: sensitive
 confidence: high
 sources:
-  - resource: inbox/processed/2026-11-22-muse.yaml
+  - resource: raw/2026-11-22-muse.yaml
     origin: memory
 verified: [{ by: "human:matt", at: 2026-11-23 }]
 ---

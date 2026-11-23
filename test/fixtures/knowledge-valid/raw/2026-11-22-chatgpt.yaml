@@ -1,0 +1,21 @@
+export:
+  tool: chatgpt
+  prompt_version: 1
+  exported_at: 2026-11-22
+  complete: true
+items:
+  - kind: preference
+    title: Prefers short replies
+    content: Keep answers under 150 words unless asked for depth.
+    scope: global
+    origin: memory
+    saved_at: 2026-08-14
+    confidence: high
+  - kind: project
+    title: KnowledgeProject
+    content: Building a cross-agent knowledge hub on Bun.
+    scope: project:knowledge-project
+    origin: inferred_from_chats
+    confidence: medium
+gaps:
+  - Doesn't know which calendar is the work one.

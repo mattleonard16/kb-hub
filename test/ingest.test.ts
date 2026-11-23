@@ -93,9 +93,7 @@ describe("ingest to inbox", () => {
 
   test("inbox writes cannot escape inbox/", async () => {
     const root = await tempKnowledge();
-    await expect(writeInbox(root, "../knowledge/profile/evil.md", "x")).rejects.toThrow(
-      "outside inbox",
-    );
+    await expect(writeInbox(root, "../wiki/profile/evil.md", "x")).rejects.toThrow("outside inbox");
   });
 
   test("stores JSON from an export ZIP and counts conversations", async () => {

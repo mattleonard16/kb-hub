@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { type LinkGraph, linkGraph } from "../lib/links.ts";
 import type { Sensitivity, Status } from "../schema/concept.ts";
 import type { Concept, Knowledge } from "./load.ts";
 
@@ -24,15 +25,26 @@ export type SearchHit = {
 
 export type SearchPage = { results: SearchHit[]; next_cursor: string | null; total: number };
 
+/** Question and filler words dropped from searches (porter also stems "use" to "us", etc.). */
+const STOPWORDS = new Set(
+  (
+    "a an and are as at be by can do does for from has have how i in is it its me my of on or " +
+    "should so that the their there this to us use used using was what when where which who why " +
+    "will with would you your"
+  ).split(" "),
+);
+
 /**
  * In-memory SQLite FTS5 index over a loaded knowledge repo. Rebuilt from the repo in
  * milliseconds, so it is never the source of truth and never needs migrations.
  */
 export class KnowledgeStore {
   readonly db: Database;
+  readonly graph: LinkGraph;
   private byId = new Map<string, Concept>();
 
   constructor(readonly knowledge: Knowledge) {
+    this.graph = linkGraph(knowledge.concepts);
     this.db = new Database(":memory:");
     this.db.run(`CREATE TABLE concepts (
       id TEXT PRIMARY KEY, title TEXT, description TEXT, type TEXT, scope TEXT,
@@ -77,6 +89,15 @@ export class KnowledgeStore {
     return c && allowed.includes(c.meta.sensitivity) ? c : null;
   }
 
+  /** Pages this page links to and pages that link to it, limited to what the caller may see. */
+  related(id: string, allowed: Sensitivity[]): { links: string[]; backlinks: string[] } {
+    const visible = (x: string) => this.get(x, allowed) !== null;
+    return {
+      links: (this.graph.links.get(id) ?? []).filter(visible),
+      backlinks: (this.graph.backlinks.get(id) ?? []).filter(visible),
+    };
+  }
+
   /** Ids that look like `id`, for "did you mean" errors. */
   similarIds(id: string, allowed: Sensitivity[], limit = 3): string[] {
     const words = id.split(/[^a-z0-9]+/i).filter((w) => w.length > 1);
@@ -85,7 +106,10 @@ export class KnowledgeStore {
   }
 
   search(query: string, f: SearchFilters, limit = 8, cursor?: string | null): SearchPage {
-    const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    const words = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    // Agents search in full questions; filler words would match almost every concept.
+    const content = words.filter((w) => !STOPWORDS.has(w));
+    const terms = content.length ? content : words;
     if (!terms.length) return { results: [], next_cursor: null, total: 0 };
     const match = terms.map((t) => `"${t}"*`).join(" OR ");
     const offset = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0);

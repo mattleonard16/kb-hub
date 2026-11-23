@@ -149,7 +149,13 @@ describe("hosted MCP with OAuth", () => {
     ).result.tools
       .map((t) => t.name)
       .sort();
-    expect(names).toEqual(["flag_knowledge", "get_concept", "ingest", "search_knowledge"]);
+    expect(names).toEqual([
+      "add_source",
+      "flag_knowledge",
+      "get_concept",
+      "ingest",
+      "search_knowledge",
+    ]);
 
     const search = await req("/mcp/write", {
       method: "POST",
@@ -230,7 +236,7 @@ describe("hosted MCP with OAuth", () => {
     const { req, root } = await setup();
     expect((await req("/hooks/github", { method: "POST", body: "{}" })).status).toBe(401);
     await Bun.write(
-      join(root, "knowledge/profile/x.md"),
+      join(root, "wiki/profile/x.md"),
       "---\ntype: fact\ntitle: X\nscope: global\nstatus: draft\nsensitivity: public\nconfidence: low\nsources:\n  - resource: inbox/x.yaml\n---\nX.\n",
     );
     const body = "{}";
@@ -240,7 +246,7 @@ describe("hosted MCP with OAuth", () => {
       body,
       headers: { "x-hub-signature-256": sig },
     });
-    expect(((await r.json()) as { concepts: number }).concepts).toBe(6);
-    expect(((await (await req("/healthz")).json()) as { concepts: number }).concepts).toBe(6);
+    expect(((await r.json()) as { concepts: number }).concepts).toBe(8);
+    expect(((await (await req("/healthz")).json()) as { concepts: number }).concepts).toBe(8);
   });
 });

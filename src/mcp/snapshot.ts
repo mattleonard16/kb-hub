@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { unzipSync } from "fflate";
 
 /** Only these top-level folders are served; everything else in the knowledge repo is skipped. */
-const SERVED = ["knowledge/", "skills/"];
+const SERVED = ["wiki/", "skills/"];
 const MAX_ZIP_BYTES = 50 * 1024 * 1024;
 const MAX_FILE_BYTES = 1024 * 1024;
 /** Written into every snapshot. A folder without it is someone's checkout and is never replaced. */
@@ -13,7 +13,7 @@ export const SNAPSHOT_MARKER = ".kb-snapshot";
 export type SnapshotResult = { files: number; ref: string; bytes: number };
 
 /**
- * Download the knowledge repo as one GitHub zipball and unpack its knowledge/ and skills/
+ * Download the knowledge repo as one GitHub zipball and unpack its wiki/ and skills/
  * folders into `dest`. This replaces `git clone` and `git pull`, so the hosted server needs
  * no git binary and no persistent disk: any host with fetch and a temp folder can run it.
  * The new copy is written next to `dest` and swapped in, so a failed download keeps the old one.

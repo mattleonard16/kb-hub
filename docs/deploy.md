@@ -79,8 +79,8 @@ Both run the OAuth sign-in; only `KB_ALLOWED_GITHUB_LOGIN` can finish it. Tokens
 ## Endpoints and limits
 
 - `/mcp/read`: `search_knowledge`, `get_concept`, `kb://profile`. Read-only.
-- `/mcp/write`: the read tools plus `flag_knowledge` and `ingest`.
-- Concepts marked `sensitive` are never served here.
+- `/mcp/write`: the read tools plus `flag_knowledge`, `ingest` and `add_source`.
+- Pages marked `sensitive` are never served here.
 - 60 calls a minute and 50 writes a day per client.
 - Revoke one client: `KB_REVOKED_CLIENTS=<id>` (ids are in the audit log, which goes to the host's logs).
 
