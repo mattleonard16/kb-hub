@@ -1,0 +1,7 @@
+# Test fixtures and tests contain fake tokens on purpose, to test secret detection.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "fake secrets used by tests"
+paths = ['''^test/''']

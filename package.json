@@ -1,0 +1,35 @@
+{
+  "name": "kb-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal knowledge hub: ingest what your AI assistants know, curate it in Git, serve it back over MCP.",
+  "bin": {
+    "kb": "src/cli.ts"
+  },
+  "packageManager": "bun@1.4.4",
+  "engines": {
+    "bun": ">=1.4.4"
+  },
+  "scripts": {
+    "kb": "bun src/cli.ts",
+    "dev": "bun --watch src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "bun test",
+    "deps:check": "bun scripts/check-deps.ts",
+    "check": "bun run deps:check && bun run typecheck && bun run lint && bun run test",
+    "build": "bun build src/cli.ts --compile --outfile dist/kb"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "fflate": "0.8.3",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.8",
+    "@types/bun": "1.4.5",
+    "typescript": "7.0.2"
+  }
+}
