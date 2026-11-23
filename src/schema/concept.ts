@@ -17,9 +17,11 @@ export const ConceptType = z.enum([
 ]);
 
 export const Status = z.enum(["draft", "stable", "deprecated"]);
+export type Status = z.infer<typeof Status>;
 
 /** public: fine anywhere. personal: hosted server with scope. sensitive: local only, never hosted. */
 export const Sensitivity = z.enum(["public", "personal", "sensitive"]);
+export type Sensitivity = z.infer<typeof Sensitivity>;
 
 export const Actor = z.object({
   by: z.string().min(1),

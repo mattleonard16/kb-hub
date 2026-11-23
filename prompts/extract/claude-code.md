@@ -1,0 +1,1 @@
+Read ~/.claude/CLAUDE.md, every CLAUDE.md in this repo, your auto-memory files, and ~/.claude/skills. Export each instruction as an item with origin: project_files and put the file path at the start of content. List each skill as kind: procedure with its name and one-line description.

@@ -1,21 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { fileURLToPath } from "node:url";
 import { main } from "../src/cli.ts";
 import { lintKnowledge } from "../src/lint/lint.ts";
-
-const dir = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
+import { fixtureDir, quiet } from "./helpers.ts";
 
 describe("kb lint", () => {
   test("valid knowledge repo passes", async () => {
-    const r = await lintKnowledge(dir("knowledge-valid"));
+    const r = await lintKnowledge(fixtureDir("knowledge-valid"));
     expect(r.issues).toEqual([]);
     expect(r.ok).toBe(true);
-    expect(r.concepts).toBe(1);
+    expect(r.concepts).toBe(5);
     expect(r.skills).toBe(1);
   });
 
   test("invalid repo reports each rule", async () => {
-    const r = await lintKnowledge(dir("knowledge-invalid"));
+    const r = await lintKnowledge(fixtureDir("knowledge-invalid"));
     expect(r.ok).toBe(false);
     const rules = new Set(r.issues.map((i) => i.rule));
     for (const rule of [
@@ -24,6 +22,7 @@ describe("kb lint", () => {
       "no-secrets",
       "okf-log",
       "skill-schema",
+      "skill-name",
       "size-cap",
     ]) {
       expect(rules.has(rule)).toBe(true);
@@ -31,22 +30,14 @@ describe("kb lint", () => {
   });
 
   test("missing knowledge folder gives an actionable error", async () => {
-    const r = await lintKnowledge(dir("."));
+    const r = await lintKnowledge(fixtureDir("."));
     expect(r.issues[0]?.message).toContain("KB_KNOWLEDGE_DIR");
   });
 
-  test("CLI exit codes: 0 ok, 1 lint errors, 2 unknown or unbuilt command", async () => {
-    const log = console.log;
-    const err = console.error;
-    console.log = () => {};
-    console.error = () => {};
-    try {
-      expect(await main(["lint", dir("knowledge-valid"), "--json"])).toBe(0);
-      expect(await main(["lint", dir("knowledge-invalid")])).toBe(1);
-      expect(await main(["serve"])).toBe(2);
-    } finally {
-      console.log = log;
-      console.error = err;
-    }
+  test("CLI exit codes: 0 ok, 1 lint errors, usage errors throw", async () => {
+    expect(await quiet(() => main(["lint", fixtureDir("knowledge-valid"), "--json"]))).toBe(0);
+    expect(await quiet(() => main(["lint", fixtureDir("knowledge-invalid")]))).toBe(1);
+    await expect(main(["nope"])).rejects.toThrow("Unknown command");
+    await expect(main(["prompt", "notatool"])).rejects.toThrow("Unknown tool");
   });
 });

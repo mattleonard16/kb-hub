@@ -1,0 +1,131 @@
+import { Database } from "bun:sqlite";
+import type { Sensitivity, Status } from "../schema/concept.ts";
+import type { Concept, Knowledge } from "./load.ts";
+
+export type SearchFilters = {
+  scope?: string;
+  type?: string;
+  includeDeprecated?: boolean;
+  /** Sensitivity levels this caller may see. */
+  allowed: Sensitivity[];
+};
+
+export type SearchHit = {
+  id: string;
+  title: string;
+  description: string | null;
+  type: string;
+  scope: string;
+  status: Status;
+  verified: boolean;
+  snippet: string;
+  last_updated: string;
+};
+
+export type SearchPage = { results: SearchHit[]; next_cursor: string | null; total: number };
+
+/**
+ * In-memory SQLite FTS5 index over a loaded knowledge repo. Rebuilt from the repo in
+ * milliseconds, so it is never the source of truth and never needs migrations.
+ */
+export class KnowledgeStore {
+  readonly db: Database;
+  private byId = new Map<string, Concept>();
+
+  constructor(readonly knowledge: Knowledge) {
+    this.db = new Database(":memory:");
+    this.db.run(`CREATE TABLE concepts (
+      id TEXT PRIMARY KEY, title TEXT, description TEXT, type TEXT, scope TEXT,
+      status TEXT, sensitivity TEXT, verified INTEGER, last_updated TEXT)`);
+    this.db.run(`CREATE VIRTUAL TABLE concepts_fts USING fts5(
+      id UNINDEXED, title, description, body, tags, tokenize = 'porter unicode61')`);
+    const ins = this.db.prepare("INSERT INTO concepts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    const fts = this.db.prepare("INSERT INTO concepts_fts VALUES (?, ?, ?, ?, ?)");
+    this.db.transaction(() => {
+      for (const c of knowledge.concepts) {
+        this.byId.set(c.id, c);
+        const verified = c.meta.verified?.some((v) => v.by.startsWith("human:")) ? 1 : 0;
+        ins.run(
+          c.id,
+          c.meta.title,
+          c.meta.description ?? null,
+          c.meta.type,
+          c.meta.scope,
+          c.meta.status,
+          c.meta.sensitivity,
+          verified,
+          c.lastUpdated,
+        );
+        fts.run(
+          c.id,
+          c.meta.title,
+          c.meta.description ?? "",
+          c.body,
+          (c.meta.tags ?? []).join(" "),
+        );
+      }
+    })();
+  }
+
+  get size(): number {
+    return this.byId.size;
+  }
+
+  /** Get one concept if the caller may see it. */
+  get(id: string, allowed: Sensitivity[]): Concept | null {
+    const c = this.byId.get(id);
+    return c && allowed.includes(c.meta.sensitivity) ? c : null;
+  }
+
+  /** Ids that look like `id`, for "did you mean" errors. */
+  similarIds(id: string, allowed: Sensitivity[], limit = 3): string[] {
+    const words = id.split(/[^a-z0-9]+/i).filter((w) => w.length > 1);
+    if (!words.length) return [];
+    return this.search(words.join(" "), { allowed }, limit).results.map((r) => r.id);
+  }
+
+  search(query: string, f: SearchFilters, limit = 8, cursor?: string | null): SearchPage {
+    const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    if (!terms.length) return { results: [], next_cursor: null, total: 0 };
+    const match = terms.map((t) => `"${t}"*`).join(" OR ");
+    const offset = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0);
+
+    const where: string[] = ["concepts_fts MATCH $match"];
+    const params: Record<string, string | number> = { $match: match };
+    where.push(`c.sensitivity IN (${f.allowed.map((_, i) => `$s${i}`).join(", ") || "''"})`);
+    f.allowed.forEach((s, i) => {
+      params[`$s${i}`] = s;
+    });
+    if (!f.includeDeprecated) where.push("c.status != 'deprecated'");
+    if (f.scope) {
+      where.push("c.scope = $scope");
+      params.$scope = f.scope;
+    }
+    if (f.type) {
+      where.push("c.type = $type");
+      params.$type = f.type;
+    }
+    const sql = `FROM concepts_fts JOIN concepts c ON c.id = concepts_fts.id WHERE ${where.join(" AND ")}`;
+    const total = (this.db.query(`SELECT count(*) AS n ${sql}`).get(params) as { n: number }).n;
+    const rows = this.db
+      .query(
+        `SELECT c.*, snippet(concepts_fts, 3, '', '', ' … ', 16) AS snippet ${sql}
+         ORDER BY bm25(concepts_fts, 0, 8.0, 3.0, 1.0, 2.0) - c.verified * 0.5
+         LIMIT $limit OFFSET $offset`,
+      )
+      .all({ ...params, $limit: limit, $offset: offset }) as Array<Record<string, unknown>>;
+    const results = rows.map((r) => ({
+      id: String(r.id),
+      title: String(r.title),
+      description: (r.description as string | null) ?? null,
+      type: String(r.type),
+      scope: String(r.scope),
+      status: r.status as Status,
+      verified: r.verified === 1,
+      snippet: String(r.snippet ?? ""),
+      last_updated: String(r.last_updated),
+    }));
+    const next = offset + results.length;
+    return { results, next_cursor: next < total ? String(next) : null, total };
+  }
+}
