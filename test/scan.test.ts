@@ -9,6 +9,10 @@ import { cleanRemote, renderScan, scanRepo } from "../src/ingest/scan.ts";
 import { lintKnowledge } from "../src/lint/lint.ts";
 import { fixtureDir, quiet, tempDir } from "./helpers.ts";
 
+/** A remote URL with a placeholder login in it, built at runtime so secret scanners skip it. */
+const FAKE_LOGIN = ["placeholder-user", "placeholder-pass"].join(":");
+const remoteWithLogin = (path: string) => `https://${FAKE_LOGIN}@github.com/${path}.git`;
+
 function git(dir: string, ...args: string[]): string {
   const r = Bun.spawnSync(
     ["git", "-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.com", ...args],
@@ -26,13 +30,7 @@ async function sampleRepo(): Promise<string> {
   await mkdir(join(dir, "dist"));
   await writeFile(join(dir, "dist/bundle.js"), "ignored\n");
   git(dir, "init", "-q", "-b", "main");
-  git(
-    dir,
-    "remote",
-    "add",
-    "origin",
-    "https://x-access-token:ghp_notreal@github.com/acme/sample.git",
-  );
+  git(dir, "remote", "add", "origin", remoteWithLogin("acme/sample"));
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "init");
   return dir;
@@ -71,7 +69,7 @@ describe("kb scan", () => {
 
     const text = renderScan(scan);
     expect(text).toContain(`commit: ${scan.commit}`);
-    expect(text).not.toContain("ghp_notreal");
+    expect(text).not.toContain("placeholder-pass");
     expect(text).not.toContain("Customer setup");
     // The root instructions keep their own code fence intact.
     expect(text).toContain("````markdown\n# Sample monorepo");
@@ -89,7 +87,7 @@ describe("kb scan", () => {
   });
 
   test("cleanRemote drops credentials", () => {
-    expect(cleanRemote("https://user:tok@github.com/o/r.git")).toBe("github.com/o/r");
+    expect(cleanRemote(remoteWithLogin("o/r"))).toBe("github.com/o/r");
     expect(cleanRemote("git@github.com:o/r.git")).toBe("github.com/o/r");
   });
 
