@@ -42,11 +42,18 @@ const TYPE_HEADINGS: Record<string, string> = {
 
 /** One line per concept: the description if present, else the first paragraph of the body. */
 export function summarize(c: Concept, max = 200): string {
-  const text = (c.meta.description ?? c.body.split(/\n\s*\n/)[0] ?? "")
-    .replace(/\[\^[^\]]+\]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  const line = `${c.meta.title}: ${text}`;
+  const clean = (s: string) =>
+    s
+      .replace(/\[\^[^\]]+\]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  // The body is the fact itself; the description is a search summary. Use the body's first
+  // paragraph when it fits, so the assistant gets the actual content, not a pointer to it.
+  const para = clean(c.body.split(/\n\s*\n/)[0] ?? "");
+  const prefix = `${c.meta.title}: `;
+  const text =
+    para && prefix.length + para.length <= max ? para : clean(c.meta.description ?? "") || para;
+  const line = `${prefix}${text}`;
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 }
 

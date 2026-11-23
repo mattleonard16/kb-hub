@@ -30,8 +30,13 @@ jobs:
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
 
   # The owner adds the `approve` label to a curator PR: mark touched concepts verified, drafts stable.
+  # What counts is who added the label (the curator, not the owner, opens the PR), and the branch
+  # must live in this repo, not a fork.
   promote:
-    if: github.event.action == 'labeled' && github.event.label.name == 'approve' && github.event.pull_request.user.login == github.repository_owner
+    if: >-
+      github.event.action == 'labeled' && github.event.label.name == 'approve' &&
+      github.event.sender.login == github.repository_owner &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

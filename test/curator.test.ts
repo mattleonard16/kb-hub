@@ -99,6 +99,16 @@ describe("kb init", () => {
     expect(r.skills).toBe(1);
     await expect(main(["init", dest])).rejects.toThrow("not empty");
   });
+
+  test("approval keys on who added the label, since the curator opens the PR", async () => {
+    const wf = await readFile(
+      join(import.meta.dir, "../templates/knowledge/.github/workflows/knowledge.yml"),
+      "utf8",
+    );
+    expect(wf).toContain("github.event.sender.login == github.repository_owner");
+    expect(wf).toContain("github.event.pull_request.head.repo.full_name == github.repository");
+    expect(wf).not.toContain("pull_request.user.login");
+  });
 });
 
 describe("GitHub inbox sink", () => {

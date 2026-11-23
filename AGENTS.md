@@ -30,7 +30,7 @@ Every CLI command takes `--json` for machine-readable output. Exit codes: 0 ok, 
 | `src/curator/` | `SKILL.md` (the curator, run as a scheduled Claude task) and helpers: `kb inbox`, `kb stale`, `kb promote` |
 | `templates/knowledge/` | What `kb init` creates: the private knowledge repo, with its AGENTS.md, workflow and usage skill |
 | `Dockerfile`, `fly.toml` | Hosted server (any container host). See `docs/deploy.md` |
-| `docs/` | `setup.md` (local) and `deploy.md` (hosted) |
+| `docs/` | `setup.md` (local), `deploy.md` (hosted), `data-flow.md` (the pipeline and how to test it with real knowledge) |
 | `prompts/extract/` | Versioned extraction prompts, one base plus one tail per tool |
 | `test/fixtures/` | Real-shaped inputs. Prefer adding a fixture over mocking. |
 
