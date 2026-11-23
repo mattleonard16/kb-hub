@@ -240,7 +240,7 @@ describe("hosted MCP with OAuth", () => {
       body,
       headers: { "x-hub-signature-256": sig },
     });
-    expect(((await r.json()) as { concepts: number }).concepts).toBe(6);
-    expect(((await (await req("/healthz")).json()) as { concepts: number }).concepts).toBe(6);
+    expect(((await r.json()) as { concepts: number }).concepts).toBe(8);
+    expect(((await (await req("/healthz")).json()) as { concepts: number }).concepts).toBe(8);
   });
 });

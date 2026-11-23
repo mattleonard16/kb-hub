@@ -1,6 +1,9 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
+import { renderIndex } from "../compile/wiki-index.ts";
+import { loadKnowledge } from "../index/load.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
+import { linkGraph } from "../lib/links.ts";
 import { findSecrets } from "../lib/secrets.ts";
 import { ConceptFrontmatter, SkillFrontmatter } from "../schema/concept.ts";
 
@@ -28,7 +31,8 @@ export const SIZE_CAPS: Record<string, { lines?: number; chars?: number }> = {
 };
 
 const RESERVED = new Set(["index.md", "log.md"]);
-const LOG_HEADING = /^## \d{4}-\d{2}-\d{2}\s*$/;
+/** Karpathy's log format: `## [2026-11-23] ingest | Claude extraction`. */
+const LOG_HEADING = /^## \[\d{4}-\d{2}-\d{2}\] (ingest|query|lint|promote) \| \S.*$/;
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -113,8 +117,8 @@ export async function lintKnowledge(root: string): Promise<LintResult> {
               issues.push({
                 file: r,
                 level: "error",
-                rule: "okf-log",
-                message: `log.md headings must be "## YYYY-MM-DD", got "${line}"`,
+                rule: "log-format",
+                message: `log.md entries must look like "## [YYYY-MM-DD] ingest | Title" (ops: ingest, query, lint, promote), got "${line}"`,
               });
             }
           }
@@ -177,6 +181,8 @@ export async function lintKnowledge(root: string): Promise<LintResult> {
     }
   }
 
+  issues.push(...(await wikiIssues(root)));
+
   for (const [path, cap] of Object.entries(SIZE_CAPS)) {
     const full = join(root, path);
     if (!(await exists(full))) continue;
@@ -208,4 +214,72 @@ export async function lintKnowledge(root: string): Promise<LintResult> {
     issues,
     ok: !issues.some((i) => i.level === "error"),
   };
+}
+
+/**
+ * Karpathy's lint pass, the parts code can check: broken links, orphan pages, source pages that
+ * don't point at a raw file, sources that are missing, and an index.md that has drifted.
+ * Contradictions and stale claims need judgment, so the curator checks those.
+ */
+const STANDALONE = new Set(["preference", "instruction", "fact"]);
+
+async function wikiIssues(root: string): Promise<Issue[]> {
+  if (!(await exists(join(root, "wiki")))) return [];
+  const issues: Issue[] = [];
+  const k = await loadKnowledge(root);
+  const graph = linkGraph(k.concepts);
+  for (const c of k.concepts) {
+    const file = `wiki/${c.id}.md`;
+    for (const t of graph.broken.get(c.id) ?? []) {
+      issues.push({
+        file,
+        level: "error",
+        rule: "broken-link",
+        message: `links to "${t}", which is not a page (or matches more than one). Use the page id, e.g. [[projects/kb-hub]].`,
+      });
+    }
+    // Single preferences, instructions and facts stand alone; everything else should be linked.
+    if (
+      !STANDALONE.has(c.meta.type) &&
+      c.meta.status !== "deprecated" &&
+      !graph.backlinks.get(c.id)?.length
+    ) {
+      issues.push({
+        file,
+        level: "warning",
+        rule: "orphan",
+        message:
+          "no other page links here; link it from a related project, person, topic or source page",
+      });
+    }
+    if (c.meta.type === "source" && !c.meta.sources.some((s) => s.resource.startsWith("raw/"))) {
+      issues.push({
+        file,
+        level: "error",
+        rule: "source-raw",
+        message:
+          "a source page must list the raw file it summarizes (sources: - resource: raw/...)",
+      });
+    }
+    for (const s of c.meta.sources) {
+      if (/^(raw|inbox)\//.test(s.resource) && !(await exists(join(root, s.resource)))) {
+        issues.push({
+          file,
+          level: c.meta.type === "source" ? "error" : "warning",
+          rule: "missing-source",
+          message: `source ${s.resource} does not exist${s.resource.startsWith("inbox/") ? " (processed files move to raw/)" : ""}`,
+        });
+      }
+    }
+  }
+  const indexFile = join(root, "wiki/index.md");
+  if ((await exists(indexFile)) && (await readFile(indexFile, "utf8")) !== renderIndex(k)) {
+    issues.push({
+      file: "wiki/index.md",
+      level: "warning",
+      rule: "index-stale",
+      message: "out of date with the pages; run kb index",
+    });
+  }
+  return issues;
 }

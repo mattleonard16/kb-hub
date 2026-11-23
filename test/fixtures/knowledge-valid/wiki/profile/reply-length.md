@@ -9,7 +9,7 @@ confidence: high
 stale_after: 2027-11-22
 sources:
   - id: s1
-    resource: inbox/processed/2026-11-22-chatgpt.yaml
+    resource: raw/2026-11-22-chatgpt.yaml
     origin: memory
     last_modified: 2026-08-14
 generated: { by: curator, at: 2026-11-23 }

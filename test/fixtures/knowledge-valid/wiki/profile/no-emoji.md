@@ -6,7 +6,7 @@ status: stable
 sensitivity: public
 confidence: high
 sources:
-  - resource: inbox/processed/2026-11-22-claude.yaml
+  - resource: raw/2026-11-22-claude.yaml
     origin: memory
 verified: [{ by: "human:matt", at: 2026-11-23 }]
 ---

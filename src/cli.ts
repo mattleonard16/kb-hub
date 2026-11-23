@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { cp, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { compileAll } from "./compile/compile.ts";
 import {
@@ -10,12 +10,14 @@ import {
   recordDelivery,
   syncTargets,
 } from "./compile/sync.ts";
+import { writeIndex } from "./compile/wiki-index.ts";
 import { listInbox, markProcessed, staleConcepts } from "./curator/inbox.ts";
 import { promote } from "./curator/promote.ts";
 import { loadKnowledge } from "./index/load.ts";
 import { KnowledgeStore } from "./index/store.ts";
 import { ingestReply, ingestZip } from "./ingest/ingest.ts";
 import { extractionPrompt } from "./ingest/prompts.ts";
+import { addSource, isSourceKind, SOURCE_KINDS } from "./ingest/source.ts";
 import { FsSink } from "./lib/sinks.ts";
 import { lintKnowledge } from "./lint/lint.ts";
 import { AuditLog, type Lockdown } from "./mcp/policy.ts";
@@ -28,14 +30,17 @@ Usage: kb <command> [args] [--json]
 
 Knowledge repo: --dir <path>, or $KB_KNOWLEDGE_DIR, or ../knowledge
 
-Get knowledge in
-  prompt <tool>            Print the extraction prompt to paste into a tool
+Get knowledge in (everything lands in inbox/, the curator's queue)
+  add <file|->             Queue any source as-is: email, transcript, notes, repo doc, terminal
+                           session, Slack thread, article (--kind <kind> --title "...")
+  prompt <tool>            Print the extraction prompt to paste into an AI assistant
   ingest <file|->          Store a pasted extraction reply in inbox/ (--tool <tool>)
   ingest --zip <file>      Store a ChatGPT or Claude data export in inbox/exports/ (--tool <tool>)
 
 Check and search
-  lint                     Validate the knowledge repo
-  search <words>           Search concepts (local, sees everything)
+  lint                     Validate the knowledge repo (schema, links, orphans, index)
+  search <words>           Search pages (local, sees everything)
+  index                    Regenerate wiki/index.md, the catalog of every page
 
 Serve it to agents
   serve                    MCP over stdio for Claude Code and Codex
@@ -50,7 +55,7 @@ Deliver it
 Curate (used by the curator skill)
   init <dir>               Create a new knowledge repo from the template
   inbox                    List unprocessed inbox files (max 200 per run)
-  inbox done <paths...>    Move them to inbox/processed/ and log it (--note "...")
+  inbox done <paths...>    Move them to raw/ (kept unchanged) and log it (--note "...")
   stale                    Concepts past their stale_after date
   promote <files...>       Mark concepts verified by you; drafts become stable (--by human:<login>)
 
@@ -112,6 +117,8 @@ export async function main(argv: string[]): Promise<number> {
       by: { type: "string" },
       days: { type: "string" },
       limit: { type: "string" },
+      kind: { type: "string" },
+      title: { type: "string" },
     },
   });
   const out: Out = { json: v.json };
@@ -144,6 +151,30 @@ export async function main(argv: string[]): Promise<number> {
       if (!tool) throw new UsageError("Usage: kb prompt <tool>");
       const text = extractionPrompt(tool);
       print(out, { tool, prompt: text }, text);
+      return 0;
+    }
+
+    case "add": {
+      const src = args[0];
+      if (!src || !isSourceKind(v.kind))
+        throw new UsageError(
+          `Usage: kb add <file|-> --kind <${SOURCE_KINDS.join("|")}> [--title "..."]`,
+        );
+      const text = src === "-" ? await Bun.stdin.text() : await Bun.file(src).text();
+      const title = v.title ?? (src === "-" ? v.kind : basename(src).replace(/\.[^.]+$/, ""));
+      const ext = src === "-" ? "md" : extname(src).slice(1) || "txt";
+      const r = await addSource(new FsSink(root), text, { kind: v.kind, title, ext });
+      print(
+        out,
+        r,
+        `${r.created ? "Queued" : "Already queued"} ${r.kind} (${r.bytes} bytes) at ${r.path}.${r.injection.length ? ` It contains instruction-like text (${r.injection.join(", ")}); the curator will not copy it.` : ""}`,
+      );
+      return 0;
+    }
+
+    case "index": {
+      const r = await writeIndex(root, await loadKnowledge(root));
+      print(out, r, `Wrote wiki/index.md (${r.pages} pages).`);
       return 0;
     }
 
@@ -294,7 +325,7 @@ export async function main(argv: string[]): Promise<number> {
         print(
           out,
           { moved },
-          `Moved ${moved.length} file(s) to inbox/processed/ and updated knowledge/log.md.`,
+          `Moved ${moved.length} file(s) to raw/ and logged the ingest in wiki/log.md.`,
         );
         return 0;
       }

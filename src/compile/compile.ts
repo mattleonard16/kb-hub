@@ -45,6 +45,8 @@ export function summarize(c: Concept, max = 200): string {
   const clean = (s: string) =>
     s
       .replace(/\[\^[^\]]+\]/g, "")
+      .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2")
+      .replace(/\[\[([^\]]+)\]\]/g, "$1")
       .replace(/\s+/g, " ")
       .trim();
   // The body is the fact itself; the description is a search summary. Use the body's first

@@ -54,12 +54,12 @@ describe("knowledge snapshot from a GitHub zipball", () => {
       expect(gh.seen[0]).toEqual({ path: "/repos/me/knowledge/zipball/main", auth: "Bearer tok" });
       expect((await readdir(dest)).sort()).toEqual([SNAPSHOT_MARKER, "skills", "wiki"]);
       const k = await loadKnowledge(dest);
-      expect(k.concepts.length).toBe(5);
+      expect(k.concepts.length).toBe(7);
       expect(k.skills.length).toBe(1);
 
       // A second fetch (the webhook) swaps in the new copy.
       await fetchSnapshot({ repo: "me/knowledge", token: "tok", dest, apiBase: gh.api });
-      expect((await loadKnowledge(dest)).concepts.length).toBe(5);
+      expect((await loadKnowledge(dest)).concepts.length).toBe(7);
     } finally {
       gh.server.stop();
     }
@@ -82,7 +82,7 @@ describe("knowledge snapshot from a GitHub zipball", () => {
       await expect(
         fetchSnapshot({ repo: "me/knowledge", token: "t", dest, apiBase: bad.api }),
       ).rejects.toThrow("failed with 404");
-      expect((await loadKnowledge(dest)).concepts.length).toBe(5);
+      expect((await loadKnowledge(dest)).concepts.length).toBe(7);
       await expect(
         fetchSnapshot({ repo: "../evil", token: "t", dest, apiBase: ok.api }),
       ).rejects.toThrow("bad repo name");

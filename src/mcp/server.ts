@@ -213,6 +213,8 @@ export function createServer(deps: ServerDeps): McpServer {
           last_updated: z.string(),
           stale_after: z.string().nullable(),
           sources: z.array(z.object({ resource: z.string(), origin: z.string().optional() })),
+          links: z.array(z.string()),
+          backlinks: z.array(z.string()),
           body: z.string(),
         },
         annotations: { readOnlyHint: true, openWorldHint: false },
@@ -240,9 +242,14 @@ export function createServer(deps: ServerDeps): McpServer {
           last_updated: c.lastUpdated,
           stale_after: c.meta.stale_after ?? null,
           sources: c.meta.sources.map((s) => ({ resource: s.resource, origin: s.origin })),
+          ...store.related(c.id, allowed),
           body: c.body,
         };
-        const text = `${DATA_NOTICE}\n\n<concept id="${c.id}" status="${c.meta.status}" verified="${verified}" updated="${c.lastUpdated}">\n# ${c.meta.title}\n\n${c.body}\n</concept>`;
+        const rel = [
+          sc.links.length ? `Links to: ${sc.links.join(", ")}` : "",
+          sc.backlinks.length ? `Linked from: ${sc.backlinks.join(", ")}` : "",
+        ].filter(Boolean);
+        const text = `${DATA_NOTICE}\n\n<concept id="${c.id}" status="${c.meta.status}" verified="${verified}" updated="${c.lastUpdated}">\n# ${c.meta.title}\n\n${c.body}\n</concept>${rel.length ? `\n\n${rel.join("\n")}` : ""}`;
         return { content: [{ type: "text", text }], structuredContent: sc, audit: { ids: [c.id] } };
       }),
     );

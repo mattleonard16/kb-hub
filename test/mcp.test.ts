@@ -193,6 +193,6 @@ describe("MCP server", () => {
       join(root, "wiki/profile/new.md"),
       "---\ntype: fact\ntitle: New fact\nscope: global\nstatus: draft\nsensitivity: public\nconfidence: low\nsources:\n  - resource: inbox/x.yaml\n---\nNew.\n",
     );
-    expect((await holder.reload()).concepts).toBe(6);
+    expect((await holder.reload()).concepts).toBe(8);
   });
 });

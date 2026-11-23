@@ -27,7 +27,7 @@ const ALL = ["public", "personal", "sensitive"] as const;
 describe("index and search", () => {
   test("finds by title, body and tags; boosts verified", async () => {
     const store = new KnowledgeStore(await loadKnowledge(fixtureDir("knowledge-valid")));
-    expect(store.size).toBe(5);
+    expect(store.size).toBe(7);
     const r = store.search("arr revenue", { allowed: [...ALL] });
     expect(r.results[0]?.id).toBe("data-access/bigquery");
     expect(r.results[0]?.verified).toBe(true);

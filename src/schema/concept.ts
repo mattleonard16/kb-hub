@@ -7,6 +7,24 @@ import { Confidence, IsoDate, LooseDate, Origin, Scope } from "./common.ts";
  * compilers can rely on it. Unknown keys are kept (OKF allows them).
  */
 export const ConceptType = z.enum([
+  // Profile and entity pages: one fact each, and the only ones that can become always-on.
+  "preference",
+  "fact",
+  "project",
+  "person",
+  "tool",
+  "data_source",
+  "instruction",
+  // Karpathy's other wiki pages: a summary of one raw source, a concept or topic that many
+  // sources touch, and a synthesis (comparison, overview, an answer worth keeping).
+  "source",
+  "concept",
+  "synthesis",
+]);
+export type ConceptType = z.infer<typeof ConceptType>;
+
+/** Page types that may be compiled into always-on files. */
+export const PROFILE_TYPES: ReadonlySet<string> = new Set([
   "preference",
   "fact",
   "project",
@@ -65,6 +83,7 @@ export type SkillFrontmatter = z.infer<typeof SkillFrontmatter>;
 /** Always-on rule: only these concepts may be compiled into CLAUDE.md, AGENTS.md or custom instructions. */
 export function isAlwaysOn(c: ConceptFrontmatter): boolean {
   return (
+    PROFILE_TYPES.has(c.type) &&
     c.scope === "global" &&
     c.status === "stable" &&
     c.confidence === "high" &&

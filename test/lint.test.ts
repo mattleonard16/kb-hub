@@ -8,7 +8,7 @@ describe("kb lint", () => {
     const r = await lintKnowledge(fixtureDir("knowledge-valid"));
     expect(r.issues).toEqual([]);
     expect(r.ok).toBe(true);
-    expect(r.concepts).toBe(5);
+    expect(r.concepts).toBe(7);
     expect(r.skills).toBe(1);
   });
 
@@ -20,7 +20,8 @@ describe("kb lint", () => {
       "frontmatter",
       "concept-schema",
       "no-secrets",
-      "okf-log",
+      "log-format",
+      "broken-link",
       "skill-schema",
       "skill-name",
       "size-cap",

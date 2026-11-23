@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { type LinkGraph, linkGraph } from "../lib/links.ts";
 import type { Sensitivity, Status } from "../schema/concept.ts";
 import type { Concept, Knowledge } from "./load.ts";
 
@@ -24,10 +25,6 @@ export type SearchHit = {
 
 export type SearchPage = { results: SearchHit[]; next_cursor: string | null; total: number };
 
-/**
- * In-memory SQLite FTS5 index over a loaded knowledge repo. Rebuilt from the repo in
- * milliseconds, so it is never the source of truth and never needs migrations.
- */
 /** Question and filler words dropped from searches (porter also stems "use" to "us", etc.). */
 const STOPWORDS = new Set(
   (
@@ -37,11 +34,17 @@ const STOPWORDS = new Set(
   ).split(" "),
 );
 
+/**
+ * In-memory SQLite FTS5 index over a loaded knowledge repo. Rebuilt from the repo in
+ * milliseconds, so it is never the source of truth and never needs migrations.
+ */
 export class KnowledgeStore {
   readonly db: Database;
+  readonly graph: LinkGraph;
   private byId = new Map<string, Concept>();
 
   constructor(readonly knowledge: Knowledge) {
+    this.graph = linkGraph(knowledge.concepts);
     this.db = new Database(":memory:");
     this.db.run(`CREATE TABLE concepts (
       id TEXT PRIMARY KEY, title TEXT, description TEXT, type TEXT, scope TEXT,
@@ -84,6 +87,15 @@ export class KnowledgeStore {
   get(id: string, allowed: Sensitivity[]): Concept | null {
     const c = this.byId.get(id);
     return c && allowed.includes(c.meta.sensitivity) ? c : null;
+  }
+
+  /** Pages this page links to and pages that link to it, limited to what the caller may see. */
+  related(id: string, allowed: Sensitivity[]): { links: string[]; backlinks: string[] } {
+    const visible = (x: string) => this.get(x, allowed) !== null;
+    return {
+      links: (this.graph.links.get(id) ?? []).filter(visible),
+      backlinks: (this.graph.backlinks.get(id) ?? []).filter(visible),
+    };
   }
 
   /** Ids that look like `id`, for "did you mean" errors. */

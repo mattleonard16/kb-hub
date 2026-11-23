@@ -9,3 +9,5 @@ sources:
   - resource: inbox/x.yaml
 ---
 The key is ghp_abcdefghijklmnopqrstuvwxyz0123456789AB
+
+See [[profile/nowhere]].
