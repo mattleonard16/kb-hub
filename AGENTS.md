@@ -25,11 +25,11 @@ Every CLI command takes `--json` for machine-readable output. Exit codes: 0 ok, 
 | `src/lint/` | `kb lint`: validates a knowledge repo |
 | `src/ingest/` | `kb ingest`: parse pasted extraction replies and export ZIPs into `inbox/` |
 | `src/index/` | Loads a knowledge repo and builds an in-memory `bun:sqlite` FTS5 index (rebuilt on start and on reload) |
-| `src/mcp/` | MCP server (`server.ts`), policy (scopes, rate limits, lockdown, audit), stdio, HTTP + OAuth (`http.ts`, `oauth.ts`) |
+| `src/mcp/` | MCP server (`server.ts`), policy (scopes, rate limits, lockdown, audit), stdio, HTTP + OAuth (`http.ts`, `oauth.ts`), knowledge snapshot from a GitHub zipball (`snapshot.ts`) |
 | `src/compile/` | `kb compile`, `kb sync`, `kb paste`, `kb status`: CLAUDE.md and AGENTS.md sections, skills, paste blocks |
 | `src/curator/` | `SKILL.md` (the curator, run as a scheduled Claude task) and helpers: `kb inbox`, `kb stale`, `kb promote` |
 | `templates/knowledge/` | What `kb init` creates: the private knowledge repo, with its AGENTS.md, workflow and usage skill |
-| `deploy/`, `Dockerfile`, `fly.toml` | Hosted server. See `docs/deploy.md` |
+| `Dockerfile`, `fly.toml` | Hosted server (any container host). See `docs/deploy.md` |
 | `docs/` | `setup.md` (local) and `deploy.md` (hosted) |
 | `prompts/extract/` | Versioned extraction prompts, one base plus one tail per tool |
 | `test/fixtures/` | Real-shaped inputs. Prefer adding a fixture over mocking. |

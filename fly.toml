@@ -1,4 +1,5 @@
-# fly launch --no-deploy --copy-config, then set secrets (docs/deploy.md), then fly deploy
+# Optional host. fly launch --no-deploy --copy-config, set secrets (docs/deploy.md), fly deploy
+# One machine at most: rate limits are counted in memory.
 app = "kb-hub"
 primary_region = "ewr"
 
