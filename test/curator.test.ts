@@ -40,12 +40,12 @@ describe("inbox for the curator", () => {
       "Rejected one suspicious item",
       new Date("2026-11-22T13:00:00Z"),
     );
-    const log = await readFile(join(root, "knowledge/log.md"), "utf8");
+    const log = await readFile(join(root, "wiki/log.md"), "utf8");
     expect(log.match(/## 2026-11-22/g)).toHaveLength(1);
     expect(log).toContain("Merged ChatGPT export");
     expect(log).toContain("Rejected one suspicious item");
     expect((await lintKnowledge(root)).ok).toBe(true);
-    await expect(markProcessed(root, ["knowledge/profile/no-emoji.md"], "x")).rejects.toThrow(
+    await expect(markProcessed(root, ["wiki/profile/no-emoji.md"], "x")).rejects.toThrow(
       "not an unprocessed inbox path",
     );
   });
@@ -70,9 +70,9 @@ describe("staleness and promotion", () => {
 
   test("promote verifies touched concepts and makes drafts stable", async () => {
     const root = await tempKnowledge();
-    const file = join(root, "knowledge/projects/kb-hub.md");
+    const file = join(root, "wiki/projects/kb-hub.md");
     const [r] = await promote(
-      [file, join(root, "knowledge/log.md")],
+      [file, join(root, "wiki/log.md")],
       "human:mattleonard16",
       new Date("2026-11-25T00:00:00Z"),
     );

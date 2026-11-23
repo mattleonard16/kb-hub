@@ -75,12 +75,12 @@ export async function lintKnowledge(root: string): Promise<LintResult> {
   const titles = new Map<string, string>();
   const rel = (p: string) => relative(root, p).split(sep).join("/");
 
-  if (!(await exists(join(root, "knowledge")))) {
+  if (!(await exists(join(root, "wiki")))) {
     issues.push({
       file: ".",
       level: "error",
       rule: "layout",
-      message: `no knowledge/ folder under ${root}. Is KB_KNOWLEDGE_DIR pointing at the knowledge repo?`,
+      message: `no wiki/ folder under ${root}. Is KB_KNOWLEDGE_DIR pointing at the knowledge repo?`,
     });
   }
 
@@ -105,7 +105,7 @@ export async function lintKnowledge(root: string): Promise<LintResult> {
 
     const name = r.split("/").at(-1) ?? r;
 
-    if (r.startsWith("knowledge/") && r.endsWith(".md")) {
+    if (r.startsWith("wiki/") && r.endsWith(".md")) {
       if (RESERVED.has(name)) {
         if (name === "log.md") {
           for (const line of text.split("\n")) {

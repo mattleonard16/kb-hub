@@ -2,7 +2,7 @@ import { z } from "zod";
 import { Confidence, IsoDate, LooseDate, Origin, Scope } from "./common.ts";
 
 /**
- * Frontmatter of one concept file in `knowledge/`.
+ * Frontmatter of one concept file in `wiki/`.
  * OKF-compatible: OKF only requires `type`; we require more so the curator and
  * compilers can rely on it. Unknown keys are kept (OKF allows them).
  */

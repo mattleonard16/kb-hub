@@ -7,9 +7,7 @@ const fixture = (p: string) => Bun.file(new URL(`./fixtures/${p}`, import.meta.u
 
 describe("concept schema", () => {
   test("valid concept parses and is always-on", async () => {
-    const doc = parseFrontmatter(
-      await fixture("knowledge-valid/knowledge/profile/reply-length.md"),
-    );
+    const doc = parseFrontmatter(await fixture("knowledge-valid/wiki/profile/reply-length.md"));
     if (!doc.ok) throw new Error(doc.error);
     const concept = ConceptFrontmatter.parse(doc.data);
     expect(concept.type).toBe("preference");
@@ -17,9 +15,7 @@ describe("concept schema", () => {
   });
 
   test("unverified or sensitive concepts are never always-on", async () => {
-    const doc = parseFrontmatter(
-      await fixture("knowledge-valid/knowledge/profile/reply-length.md"),
-    );
+    const doc = parseFrontmatter(await fixture("knowledge-valid/wiki/profile/reply-length.md"));
     if (!doc.ok) throw new Error(doc.error);
     const base = ConceptFrontmatter.parse(doc.data);
     expect(isAlwaysOn({ ...base, verified: undefined })).toBe(false);

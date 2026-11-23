@@ -88,7 +88,7 @@ describe("MCP server", () => {
 
   test("get_concept returns body and sources; unknown ids suggest alternatives", async () => {
     const { call } = await connect();
-    const ok = await call("get_concept", { id: "knowledge/profile/reply-length.md" });
+    const ok = await call("get_concept", { id: "wiki/profile/reply-length.md" });
     expect(ok.structuredContent).toMatchObject({
       id: "profile/reply-length",
       verified: true,
@@ -190,7 +190,7 @@ describe("MCP server", () => {
     expect(text).toContain("No emoji");
     expect(text).not.toContain("Peanut");
     await Bun.write(
-      join(root, "knowledge/profile/new.md"),
+      join(root, "wiki/profile/new.md"),
       "---\ntype: fact\ntitle: New fact\nscope: global\nstatus: draft\nsensitivity: public\nconfidence: low\nsources:\n  - resource: inbox/x.yaml\n---\nNew.\n",
     );
     expect((await holder.reload()).concepts).toBe(6);

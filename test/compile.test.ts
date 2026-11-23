@@ -170,7 +170,7 @@ describe("sync and status", () => {
       deliveryStatus(k, await readState(statePath)).find((t) => t.tool === "gemini")
         ?.changes_behind,
     ).toBe(0);
-    const file = join(root, "knowledge/profile/reply-length.md");
+    const file = join(root, "wiki/profile/reply-length.md");
     await writeFile(
       file,
       (await readFile(file, "utf8")).replaceAll("under 150 words", "under 100 words"),

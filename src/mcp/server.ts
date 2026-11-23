@@ -218,7 +218,7 @@ export function createServer(deps: ServerDeps): McpServer {
         annotations: { readOnlyHint: true, openWorldHint: false },
       },
       guarded("get_concept", false, async (a: { id: string }) => {
-        const id = a.id.replace(/^\/?(knowledge\/)?/, "").replace(/\.md$/, "");
+        const id = a.id.replace(/^\/?((wiki|knowledge)\/)?/, "").replace(/\.md$/, "");
         const store = deps.store();
         const c = store.get(id, allowed);
         if (!c) {

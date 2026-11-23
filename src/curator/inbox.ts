@@ -66,7 +66,7 @@ export async function markProcessed(
     await rename(join(root, p), dest);
     moved.push(relative(root, dest).split(sep).join("/"));
   }
-  const log = join(root, "knowledge/log.md");
+  const log = join(root, "wiki/log.md");
   const day = today(now);
   let existing = "";
   try {

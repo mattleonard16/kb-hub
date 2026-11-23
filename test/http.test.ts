@@ -230,7 +230,7 @@ describe("hosted MCP with OAuth", () => {
     const { req, root } = await setup();
     expect((await req("/hooks/github", { method: "POST", body: "{}" })).status).toBe(401);
     await Bun.write(
-      join(root, "knowledge/profile/x.md"),
+      join(root, "wiki/profile/x.md"),
       "---\ntype: fact\ntitle: X\nscope: global\nstatus: draft\nsensitivity: public\nconfidence: low\nsources:\n  - resource: inbox/x.yaml\n---\nX.\n",
     );
     const body = "{}";

@@ -39,7 +39,7 @@ describe("end to end", () => {
 
     // 2. Curator: one concept per item, as a draft, sourced to where the inbox file will end up.
     const processed = stored.path.replace(/^inbox\//, "inbox/processed/");
-    const concept = join(root, "knowledge/profile/short-replies.md");
+    const concept = join(root, "wiki/profile/short-replies.md");
     await writeFile(
       concept,
       [

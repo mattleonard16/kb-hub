@@ -3,7 +3,7 @@ import { shortHash, today, writeInbox } from "./inbox.ts";
 /**
  * Where agent writes go. Locally: files in <knowledge>/inbox/. Hosted: a commit on the
  * knowledge repo's `inbox` branch through the GitHub API, so the server keeps no state.
- * Either way nothing lands in knowledge/ without a reviewed PR.
+ * Either way nothing lands in wiki/ without a reviewed PR.
  */
 export interface InboxSink {
   put(relPath: string, content: string): Promise<{ path: string; created: boolean }>;
