@@ -13,7 +13,7 @@ export type HttpDeps = {
   sink: InboxSink;
   controls: Controls;
   audit: AuditLog;
-  /** Runs before a reload on webhook, e.g. `git pull`. */
+  /** Runs before a reload on webhook: fetches a fresh snapshot, or pulls a local checkout. */
   refresh?: () => Promise<void>;
   webhookSecret?: string;
   /** Browser origins allowed to call /mcp (server-to-server calls send none). */

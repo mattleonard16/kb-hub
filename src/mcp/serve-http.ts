@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { $ } from "bun";
 import { FsSink, GitHubSink, type InboxSink } from "../lib/sinks.ts";
@@ -5,6 +6,7 @@ import { createHandler } from "./http.ts";
 import { OAuthServer } from "./oauth.ts";
 import { AuditLog, Controls } from "./policy.ts";
 import { localStateDir, StoreHolder } from "./runtime.ts";
+import { fetchSnapshot } from "./snapshot.ts";
 
 function need(env: NodeJS.ProcessEnv, name: string): string {
   const v = env[name];
@@ -17,6 +19,8 @@ export async function serveHttp(
   root: string,
   env = process.env,
 ): Promise<{ port: number; stop: () => void }> {
+  const refresh = await knowledgeSource(root, env);
+  await refresh();
   const holder = await StoreHolder.open(root);
   const oauth = new OAuthServer({
     baseUrl: need(env, "KB_PUBLIC_URL").replace(/\/+$/, ""),
@@ -40,9 +44,7 @@ export async function serveHttp(
     allowedOrigins: (env.KB_ALLOWED_ORIGINS ?? "https://chatgpt.com,https://claude.ai")
       .split(",")
       .map((s) => s.trim()),
-    refresh: async () => {
-      await $`git -C ${holder.root} pull --ff-only --quiet`.quiet();
-    },
+    refresh,
   });
   const server = Bun.serve({
     port: Number(env.PORT ?? 8787),
@@ -51,4 +53,30 @@ export async function serveHttp(
     fetch: handler,
   });
   return { port: server.port ?? 0, stop: () => server.stop() };
+}
+
+/**
+ * Where the served knowledge comes from. With KB_GITHUB_REPO and KB_GITHUB_READ_TOKEN set, it is a
+ * zipball of the repo's main branch, fetched on start and on each signed webhook (no git, no disk
+ * needed, so it runs on Cloud Run, Vercel or Fly alike). Otherwise it is a local checkout, pulled
+ * on webhook if it is a git repo.
+ */
+async function knowledgeSource(root: string, env: NodeJS.ProcessEnv): Promise<() => Promise<void>> {
+  const repo = env.KB_GITHUB_REPO;
+  const token = env.KB_GITHUB_READ_TOKEN;
+  if (repo && token) {
+    return async () => {
+      const r = await fetchSnapshot({
+        repo,
+        token,
+        dest: root,
+        ref: env.KB_KNOWLEDGE_REF ?? "main",
+        apiBase: env.KB_GITHUB_API,
+      });
+      console.error(`kb-hub: loaded ${r.files} files from ${repo}@${r.ref}`);
+    };
+  }
+  return async () => {
+    if (existsSync(join(root, ".git"))) await $`git -C ${root} pull --ff-only --quiet`.quiet();
+  };
 }
