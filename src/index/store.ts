@@ -28,6 +28,15 @@ export type SearchPage = { results: SearchHit[]; next_cursor: string | null; tot
  * In-memory SQLite FTS5 index over a loaded knowledge repo. Rebuilt from the repo in
  * milliseconds, so it is never the source of truth and never needs migrations.
  */
+/** Question and filler words dropped from searches (porter also stems "use" to "us", etc.). */
+const STOPWORDS = new Set(
+  (
+    "a an and are as at be by can do does for from has have how i in is it its me my of on or " +
+    "should so that the their there this to us use used using was what when where which who why " +
+    "will with would you your"
+  ).split(" "),
+);
+
 export class KnowledgeStore {
   readonly db: Database;
   private byId = new Map<string, Concept>();
@@ -85,7 +94,10 @@ export class KnowledgeStore {
   }
 
   search(query: string, f: SearchFilters, limit = 8, cursor?: string | null): SearchPage {
-    const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    const words = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    // Agents search in full questions; filler words would match almost every concept.
+    const content = words.filter((w) => !STOPWORDS.has(w));
+    const terms = content.length ? content : words;
     if (!terms.length) return { results: [], next_cursor: null, total: 0 };
     const match = terms.map((t) => `"${t}"*`).join(" OR ");
     const offset = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0);

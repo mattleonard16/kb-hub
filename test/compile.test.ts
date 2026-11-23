@@ -7,6 +7,7 @@ import {
   END,
   pasteBlock,
   profileSection,
+  summarize,
   upsertMarkedSection,
 } from "../src/compile/compile.ts";
 import {
@@ -172,12 +173,36 @@ describe("sync and status", () => {
     const file = join(root, "knowledge/profile/reply-length.md");
     await writeFile(
       file,
-      (await readFile(file, "utf8")).replace("under 150 words", "under 100 words"),
+      (await readFile(file, "utf8")).replaceAll("under 150 words", "under 100 words"),
     );
     k = await loadKnowledge(root);
     expect(
       deliveryStatus(k, await readState(statePath)).find((t) => t.tool === "gemini")
         ?.changes_behind,
     ).toBe(1);
+  });
+});
+
+describe("summaries carry the fact, not a pointer to it", () => {
+  test("uses the body when it fits and the description when it does not", async () => {
+    const k = await loadKnowledge(await tempKnowledge());
+    const c = k.concepts.find((x) => x.id === "profile/reply-length");
+    if (!c) throw new Error("fixture missing");
+    expect(summarize(c)).toBe(
+      "Prefers short replies: Keep replies under 150 words unless I ask for depth.",
+    );
+    expect(summarize({ ...c, body: "x ".repeat(200) })).toBe(
+      "Prefers short replies: Answers under 150 words unless asked for depth.",
+    );
+  });
+});
+
+describe("search ignores question words", () => {
+  test("a full question finds the same concepts as its keywords", async () => {
+    const store = new KnowledgeStore(await loadKnowledge(await tempKnowledge()));
+    const all = { allowed: [...ALL] };
+    const q = store.search("what should I use for emoji in my replies", all);
+    const kw = store.search("emoji replies", all);
+    expect(q.results.map((r) => r.id)).toEqual(kw.results.map((r) => r.id));
   });
 });
