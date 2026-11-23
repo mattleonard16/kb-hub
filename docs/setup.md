@@ -30,9 +30,18 @@ Tools: `claude-code`, `codex`, `chatgpt`, `gemini`, `claude`, `muse`, `instinct`
 
 Data exports: `bun run kb ingest --zip ~/Downloads/chatgpt-export.zip --tool chatgpt`.
 
+Any other source (an email, a meeting transcript, notes, a repo doc, a terminal session, a Slack thread, an article) goes in unchanged:
+
+```sh
+bun run kb add ~/Downloads/planning-call.vtt --kind transcript --title "Planning call 11/22"
+pbpaste | bun run kb add - --kind email --title "Vendor quote"
+```
+
+The curator also pulls from connected sources on each run: Gmail threads labeled `kb`, Google Drive docs in a folder named `kb-inbox`, and Slack threads marked with `:brain:` if Slack is connected.
+
 ## 3. Run the curator
 
-In a Claude project thread with both repos attached, ask: "Run the kb-curator skill from kb-hub/src/curator/SKILL.md on the knowledge repo." It opens a `curate/YYYY-MM-DD` PR. Review it, add the `approve` label, then merge.
+In a Claude project thread with both repos attached, ask: "Run the kb-curator skill from kb-hub/src/curator/SKILL.md on the knowledge repo." It opens a `curate/YYYY-MM-DD` PR. Review it, add the `approve` label, then merge. Open the knowledge repo in Obsidian to browse the wiki and its graph.
 
 To make it nightly, ask in the project for a scheduled task at 2 AM Eastern with the same instruction. It runs on your Claude plan.
 

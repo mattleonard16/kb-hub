@@ -31,7 +31,7 @@ describe("inbox for the curator", () => {
       },
     );
     expect(src.path).toMatch(
-      /^inbox\/sources\/\d{4}-\d{2}-\d{2}-transcript-[0-9a-f]{12}-standup-11-22\.md$/,
+      /^inbox\/sources\/\d{4}-\d{2}-\d{2}-cli-transcript-[0-9a-f]{12}-standup-11-22\.md$/,
     );
     expect(src.injection).toContain("override");
     const { entries } = await listInbox(root);
@@ -131,7 +131,9 @@ describe("kb init", () => {
     expect(files).toContain(".gitignore");
     expect(files).toContain("AGENTS.md");
     const r = await lintKnowledge(dest);
+    expect(r.issues).toEqual([]);
     expect(r.ok).toBe(true);
+    for (const d of ["raw", "inbox", "wiki"]) expect(files).toContain(d);
     expect(r.skills).toBe(1);
     await expect(main(["init", dest])).rejects.toThrow("not empty");
   });

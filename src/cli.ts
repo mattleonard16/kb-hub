@@ -11,7 +11,7 @@ import {
   syncTargets,
 } from "./compile/sync.ts";
 import { writeIndex } from "./compile/wiki-index.ts";
-import { listInbox, markProcessed, staleConcepts } from "./curator/inbox.ts";
+import { appendLog, type LogOp, listInbox, markProcessed, staleConcepts } from "./curator/inbox.ts";
 import { promote } from "./curator/promote.ts";
 import { loadKnowledge } from "./index/load.ts";
 import { KnowledgeStore } from "./index/store.ts";
@@ -56,7 +56,8 @@ Curate (used by the curator skill)
   init <dir>               Create a new knowledge repo from the template
   inbox                    List unprocessed inbox files (max 200 per run)
   inbox done <paths...>    Move them to raw/ (kept unchanged) and log it (--note "...")
-  stale                    Concepts past their stale_after date
+  log <op> --note "..."    Append a log entry (op: ingest, query, lint, promote)
+  stale                    Pages past their stale_after date
   promote <files...>       Mark concepts verified by you; drafts become stable (--by human:<login>)
 
 Control
@@ -169,6 +170,15 @@ export async function main(argv: string[]): Promise<number> {
         r,
         `${r.created ? "Queued" : "Already queued"} ${r.kind} (${r.bytes} bytes) at ${r.path}.${r.injection.length ? ` It contains instruction-like text (${r.injection.join(", ")}); the curator will not copy it.` : ""}`,
       );
+      return 0;
+    }
+
+    case "log": {
+      const op = args[0];
+      if (!op || !["ingest", "query", "lint", "promote"].includes(op) || !v.note)
+        throw new UsageError('Usage: kb log <ingest|query|lint|promote> --note "..."');
+      await appendLog(root, op as LogOp, v.note, args.slice(1));
+      print(out, { op, note: v.note }, `Logged ${op} in wiki/log.md.`);
       return 0;
     }
 
@@ -308,6 +318,7 @@ export async function main(argv: string[]): Promise<number> {
         recursive: true,
       });
       await rename(join(dest, "gitignore.txt"), join(dest, ".gitignore"));
+      await writeIndex(dest, await loadKnowledge(dest));
       print(
         out,
         { created: dest },
@@ -359,6 +370,13 @@ export async function main(argv: string[]): Promise<number> {
       if (!args.length || !v.by)
         throw new UsageError("Usage: kb promote <files...> --by human:<login>");
       const r = await promote(args, v.by);
+      if (r.length)
+        await appendLog(
+          root,
+          "promote",
+          `${r.length} page(s) approved by ${v.by}`,
+          r.map((x) => `${x.file.replace(/^.*?wiki\//, "")}: ${x.from} -> ${x.to}`),
+        );
       print(
         out,
         r,

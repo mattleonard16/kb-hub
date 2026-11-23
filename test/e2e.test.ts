@@ -5,10 +5,12 @@ import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { main } from "../src/cli.ts";
 import { compileAll } from "../src/compile/compile.ts";
+import { writeIndex } from "../src/compile/wiki-index.ts";
 import { listInbox, markProcessed } from "../src/curator/inbox.ts";
 import { promote } from "../src/curator/promote.ts";
 import { loadKnowledge } from "../src/index/load.ts";
 import { ingestReply } from "../src/ingest/ingest.ts";
+import { addSource } from "../src/ingest/source.ts";
 import { FsSink } from "../src/lib/sinks.ts";
 import { lintKnowledge } from "../src/lint/lint.ts";
 import { ALL_SCOPES, AuditLog, Controls, RateLimiter } from "../src/mcp/policy.ts";
@@ -22,7 +24,7 @@ import { fixtureText, quiet, tempDir } from "./helpers.ts";
  * delivers it, an agent finds it over MCP and flags a gap, and the flag lands back in the inbox.
  */
 describe("end to end", () => {
-  test("extraction -> inbox -> curator -> approve -> compile -> MCP -> flag -> inbox", async () => {
+  test("sources -> inbox -> curator -> raw + wiki -> approve -> compile -> MCP -> flag -> inbox", async () => {
     const root = join(await tempDir(), "knowledge");
     expect(await quiet(() => main(["init", root]))).toBe(0);
     const sink = new FsSink(root);
@@ -34,11 +36,51 @@ describe("end to end", () => {
     expect(
       (await ingestReply(sink, `\`\`\`yaml\n${reply}\`\`\``, { tool: "chatgpt" })).created,
     ).toBe(false);
+    // Any other source goes in byte for byte.
+    const transcript = "Planning call.\nMatt: kb-hub ships the curator before hosting.\n";
+    const src = await addSource(sink, transcript, { kind: "transcript", title: "Planning call" });
     const { entries } = await listInbox(root);
-    expect(entries.map((e) => e.path)).toEqual([stored.path]);
+    expect(entries.map((e) => e.path).sort()).toEqual([stored.path, src.path].sort());
 
-    // 2. Curator: one concept per item, as a draft, sourced to where the inbox file will end up.
-    const processed = stored.path.replace(/^inbox\//, "inbox/processed/");
+    // 2. Curator: pages as drafts, sourced to where each inbox file will end up (raw/).
+    const processed = stored.path.replace(/^inbox\//, "raw/");
+    const rawSrc = src.path.replace(/^inbox\//, "raw/");
+    const page = (lines: string[]) => `${lines.join("\n")}\n`;
+    await writeFile(
+      join(root, "wiki/projects/kb-hub.md"),
+      page([
+        "---",
+        "type: project",
+        "title: kb-hub",
+        "description: The personal knowledge hub.",
+        "scope: project:kb-hub",
+        "status: draft",
+        "sensitivity: personal",
+        "confidence: high",
+        "sources:",
+        `  - resource: ${rawSrc}`,
+        "    origin: project_files",
+        "---",
+        "The curator ships before hosting. See [[sources/planning-call]].",
+      ]),
+    );
+    await writeFile(
+      join(root, "wiki/sources/planning-call.md"),
+      page([
+        "---",
+        "type: source",
+        "title: Planning call",
+        "scope: project:kb-hub",
+        "status: draft",
+        "sensitivity: personal",
+        "confidence: high",
+        "sources:",
+        `  - resource: ${rawSrc}`,
+        "    origin: project_files",
+        "---",
+        "- Curator first, hosting later: [[projects/kb-hub]].",
+      ]),
+    );
     const concept = join(root, "wiki/profile/short-replies.md");
     await writeFile(
       concept,
@@ -63,12 +105,14 @@ describe("end to end", () => {
     );
     await markProcessed(
       root,
-      [stored.path],
-      "Merged ChatGPT export",
+      [stored.path, src.path],
+      "ChatGPT export and planning call",
       new Date("2026-11-22T12:00:00Z"),
     );
     expect((await listInbox(root)).entries).toHaveLength(0);
-    expect((await lintKnowledge(root)).ok).toBe(true);
+    expect(await readFile(join(root, rawSrc), "utf8")).toBe(transcript);
+    await writeIndex(root, await loadKnowledge(root));
+    expect((await lintKnowledge(root)).issues).toEqual([]);
 
     // A draft is searchable but not always-on.
     let built = await compileAll(root, await loadKnowledge(root));
@@ -102,6 +146,14 @@ describe("end to end", () => {
       id: "profile/short-replies",
       verified: true,
     });
+    const proj = (await mcp.callTool({
+      name: "get_concept",
+      arguments: { id: "projects/kb-hub" },
+    })) as unknown as {
+      structuredContent: { backlinks: string[]; sources: Array<{ resource: string }> };
+    };
+    expect(proj.structuredContent.backlinks).toEqual(["sources/planning-call"]);
+    expect(proj.structuredContent.sources[0]?.resource).toBe(rawSrc);
     const flag = (await mcp.callTool({
       name: "flag_knowledge",
       arguments: {

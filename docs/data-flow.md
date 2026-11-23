@@ -1,47 +1,70 @@
 # How data flows
 
+The knowledge repo is an [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). It has three layers: immutable raw sources, a wiki that an agent maintains, and a schema file (`AGENTS.md`). In front of them sits a review queue, so nothing reaches the wiki without your approval.
+
 ```
- assistant memory          inbox/ (untrusted)        knowledge/ (reviewed)        assistants
- ────────────────          ──────────────────        ─────────────────────        ──────────
- kb prompt <tool>  ──►     kb ingest  ──► *.yaml ─┐
- data export ZIP   ──►     kb ingest --zip ──►    │   curator (Claude task)
- agent flags (MCP) ──►     flag_knowledge ──►     ├─► PR "Curate: <date>" ──► you add `approve`
- hosted flags      ──►     inbox branch (API) ──► ┘        │                        │
-                                                            ▼                        ▼
-                                                  drafts in knowledge/      promote: stable + verified
-                                                                                     │
-                                       ┌─────────────────────────────────────────────┤
-                                       ▼                         ▼                   ▼
-                              MCP search/get            build/ CLAUDE.md,      kb sync / kb paste
-                              (stdio or hosted)         AGENTS.md, paste       (~/.claude, ~/.codex,
-                                                                                ChatGPT, Gemini, …)
+ any source                 inbox/ (queue)             raw/ (kept forever)     wiki/ (reviewed pages)
+ ──────────                 ──────────────             ───────────────────     ──────────────────────
+ kb add (email, transcript,  ──► sources/ ─┐
+   notes, repo, terminal,                  │
+   Slack, article)                         │   curator (nightly Claude task)
+ add_source (MCP, any agent) ──► sources/  ├─► reads, writes pages ─────────────► PR "Curate: <date>"
+ kb prompt + kb ingest       ──► *.yaml    │   kb inbox done ──► raw/<same path>        │
+   (each AI assistant)                     │   kb index, kb lint, log.md                │ you add `approve`
+ flag_knowledge (MCP)        ──► flags/   ─┘                                            ▼
+ connectors in the curator task: Gmail label `kb`, Drive folder `kb-inbox`,    promote: stable + verified,
+   Slack, repos                                                                  index + build/ regenerated
+                                                                                        │
+                           ┌────────────────────────────────────────────────────────────┤
+                           ▼                               ▼                            ▼
+                  MCP search / get_concept        build/ CLAUDE.md, AGENTS.md,   kb sync / kb paste
+                  (links + backlinks; stdio       paste blocks (profile facts    (~/.claude, ~/.codex,
+                  or hosted)                      only)                          ChatGPT, Gemini, …)
 ```
 
 | Stage | Command | Writes | Trust |
 | --- | --- | --- | --- |
-| Extract | `kb prompt <tool>`, paste into the app | nothing | |
-| Ingest | `kb ingest`, `flag_knowledge`, `ingest` (MCP) | `inbox/` only | untrusted; secrets refused, injection marked |
-| Curate | the `kb-curator` skill | a `curate/<date>` branch: drafts in `knowledge/`, `skills/`, `log.md`, `inbox/processed/` | agent, unverified |
-| Approve | `approve` label (runs `kb promote`, `kb compile`) | `status: stable`, `verified: human:<you>`, `build/` | you |
-| Serve | `kb serve`, `kb serve --http` | audit log | drafts are marked `verified: false`; sensitive never hosted |
-| Deliver | `kb sync`, `kb paste <tool>` | marked section of `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, kb-managed skills | only global, stable, high-confidence, human-verified, non-sensitive concepts |
+| Queue | `kb add`, `kb ingest`, `add_source`, `ingest`, `flag_knowledge` | `inbox/` only | Untrusted. Secrets are refused, and instruction-like text is marked. |
+| Ingest | the `kb-curator` skill | A `curate/<date>` branch with draft pages in `wiki/`, skills, and log entries. `kb inbox done` moves the queue to `raw/`. | Agent, unverified |
+| Lint | `kb lint`, `kb stale`, `kb index` | `wiki/index.md`, log entries | Checked by code, plus the curator's judgment on contradictions |
+| Approve | the `approve` label, which runs `kb promote`, `kb index` and `kb compile` | `status: stable`, `verified: human:<you>`, `build/`, a `promote` log entry | You |
+| Query | `kb serve`, `kb serve --http` | Audit log | Drafts show as `verified: false`. Sensitive pages are never hosted. |
+| Deliver | `kb sync`, `kb paste <tool>` | The marked section of `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`, plus kb-managed skills | Only global, stable, high-confidence, human-verified, non-sensitive profile pages |
 
-The first paragraph of a concept's body is what assistants receive in compiled files, so it should state the whole fact. The `description` is the search summary and the fallback when the body is too long for a line.
+Rules the code enforces:
 
-`test/e2e.test.ts` runs this whole loop on a fresh repo.
+- **`raw/` is write-once.** `kb inbox done` refuses to overwrite a raw file, and the knowledge repo's PR check fails if a PR changes or deletes one.
+- **Every wiki page except a single profile fact should be linked from another page.** `kb lint` warns on orphans and fails on broken links.
+- **A `source` page must cite the raw file it summarizes.**
+- **The index is generated by `kb index`, never edited by hand.** `kb lint` warns when it drifts.
+- **The log is append-only.** Each entry looks like `## [YYYY-MM-DD] ingest | Title`.
+
+`test/e2e.test.ts` runs the whole loop on a fresh repo.
 
 ## Test it with your own knowledge
 
-Local only, no hosting needed. Each step has a check.
+All of this runs locally; no hosting is needed. Each step ends with a check.
 
-1. **Create the repo.** `bun run kb init ../knowledge`, push it private (see `setup.md`). Check: `kb lint` says `0 concepts, 1 skills`.
-2. **Extract from two tools that overlap**, such as Claude Code and Claude. Run `kb prompt claude-code`, paste the reply into `kb ingest - --tool claude-code`, then do the same for `claude`. Check: `kb inbox` lists two files, and pasting the same reply again says "Already stored".
+1. **Create the repo.** Run `bun run kb init ../knowledge` and push it as a private repo (see `setup.md`).
+   - Check: `kb lint` says `0 concepts, 1 skills`.
+2. **Queue a mix of sources.** Use two AI assistants that overlap (`kb prompt claude-code`, then `kb ingest - --tool claude-code`, and the same for `claude`), plus a real email or meeting transcript (`kb add notes.md --kind transcript --title "Planning call"`).
+   - Check: `kb inbox` lists them all.
+   - Check: adding the same file again says "Already queued".
 3. **Run the curator** in a Claude project thread with both repos attached. Check that the PR:
-   - has one concept per item
-   - merges duplicates across tools into one concept with two sources
-   - lists rejections
-   - passes `kb lint`
-4. **Approve.** Add the `approve` label. Check: the workflow commits `status: stable`, `verified`, and `build/`. Then merge.
-5. **Ask questions.** Run `kb search "which runtime should I use"`, or connect `kb serve` to Claude Code and ask it something only your knowledge base knows. Check: the right concept comes first and shows `verified: true`.
-6. **Flag a gap** from Claude Code ("the knowledge base has nothing on X"). Check: a file appears in `inbox/flags/`, and the next curator run turns it into a low-confidence draft.
-7. **Deliver.** Run `kb sync --dry-run`, then `kb sync`, then `kb paste chatgpt`. Check: your own notes in `~/.claude/CLAUDE.md` are untouched, and `kb status` shows Claude Code and Codex up to date.
+   - writes one summary page per source;
+   - updates the project and person pages each source touches;
+   - merges duplicates across tools into one page with two sources;
+   - links pages with `[[...]]`;
+   - passes `kb lint`.
+4. **Approve.** Add the `approve` label.
+   - Check: the workflow commits `status: stable`, `verified`, `wiki/index.md` and `build/`.
+   - Then merge.
+5. **Browse it.** Open the repo in Obsidian.
+   - Check: the graph view connects sources, projects and topics.
+6. **Ask questions.** Connect `kb serve` to Claude Code and ask something only your wiki knows.
+   - Check: the right page comes first, shows `verified: true`, and its backlinks lead to the source.
+7. **Feed it back.** Ask Claude Code to save a good answer (it calls `add_source` with kind `answer`), and to flag a gap.
+   - Check: both land in `inbox/`, and the next curator run files them.
+8. **Deliver.** Run `kb sync --dry-run`, then `kb sync`, then `kb paste chatgpt`.
+   - Check: your own notes in `~/.claude/CLAUDE.md` are untouched.
+   - Check: `kb status` shows Claude Code and Codex up to date.

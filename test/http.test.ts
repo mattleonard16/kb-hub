@@ -149,7 +149,13 @@ describe("hosted MCP with OAuth", () => {
     ).result.tools
       .map((t) => t.name)
       .sort();
-    expect(names).toEqual(["flag_knowledge", "get_concept", "ingest", "search_knowledge"]);
+    expect(names).toEqual([
+      "add_source",
+      "flag_knowledge",
+      "get_concept",
+      "ingest",
+      "search_knowledge",
+    ]);
 
     const search = await req("/mcp/write", {
       method: "POST",

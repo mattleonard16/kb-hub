@@ -14,6 +14,7 @@ export const SOURCE_KINDS = [
   "terminal",
   "slack",
   "article",
+  "answer",
   "other",
 ] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
@@ -46,14 +47,15 @@ function slug(s: string): string {
 
 /**
  * Queue any source document (an email, a meeting transcript, notes, a repo README, a terminal
- * session, a Slack thread, an article) for the curator, stored byte for byte. Metadata lives in
- * the file name, `sources/<date>-<kind>-<hash>-<slug>.<ext>`, so the raw text is never altered.
+ * session, a Slack thread, an article, an agent's answer worth keeping) for the curator, stored
+ * byte for byte. Metadata lives in the file name, `sources/<date>-<by>-<kind>-<hash>-<slug>.<ext>`,
+ * so the raw text is never altered. `by` is the authenticated client, never caller input.
  * Text containing a secret is refused: raw sources are committed and kept forever.
  */
 export async function addSource(
   sink: InboxSink,
   text: string,
-  opts: { kind: SourceKind; title: string; ext?: string; now?: Date },
+  opts: { kind: SourceKind; title: string; ext?: string; now?: Date; reportedBy?: string },
 ): Promise<SourceResult> {
   const bytes = new TextEncoder().encode(text).length;
   if (!text.trim()) throw new Error("source is empty");
@@ -68,7 +70,8 @@ export async function addSource(
     );
   const ext = (opts.ext ?? "md").toLowerCase().replace(/^\./, "");
   const safeExt = TEXT_EXT.test(ext) ? ext : "txt";
-  const name = `sources/${today(opts.now)}-${opts.kind}-${shortHash(text)}-${slug(opts.title)}.${safeExt}`;
+  const by = slug(opts.reportedBy ?? "cli").slice(0, 24);
+  const name = `sources/${today(opts.now)}-${by}-${opts.kind}-${shortHash(text)}-${slug(opts.title)}.${safeExt}`;
   const w = await sink.put(name, text);
   return { ...w, kind: opts.kind, bytes, injection: findInjection(text) };
 }

@@ -4,6 +4,7 @@ import { compileProfile } from "../compile/profile.ts";
 import type { KnowledgeStore } from "../index/store.ts";
 import { ingestReply } from "../ingest/ingest.ts";
 import { MAX_INGEST_BYTES } from "../ingest/parse.ts";
+import { addSource, SOURCE_KINDS } from "../ingest/source.ts";
 import { findInjection } from "../lib/injection.ts";
 import { findSecrets } from "../lib/secrets.ts";
 import { flagPath, type InboxSink } from "../lib/sinks.ts";
@@ -406,6 +407,46 @@ export function createServer(deps: ServerDeps): McpServer {
         const text = `${r.created ? "Stored" : "Already stored"} ${r.items.length} item(s) from ${r.tool} at ${r.path}.${r.errors.length ? ` Problems: ${r.errors.join("; ")}` : ""}`;
         return { content: [{ type: "text", text }], structuredContent: sc };
       }),
+    );
+
+    server.registerTool(
+      "add_source",
+      {
+        title: "Queue a source for the knowledge base",
+        description:
+          'Queue a source document for the curator: an email, meeting transcript, notes, a repo doc, a terminal session, a Slack thread, an article, or an answer you gave that is worth keeping (kind "answer"). It is stored unchanged and summarized into the wiki only after the user approves. Never include secrets. Example: {"kind": "transcript", "title": "Design review 11/22", "text": "..."}.',
+        inputSchema: {
+          kind: z.enum(SOURCE_KINDS).describe("What the text is"),
+          title: z.string().min(1).max(120).describe("Short title, e.g. 'Design review 11/22'"),
+          text: z.string().min(1).max(MAX_INGEST_BYTES).describe("The source text, unedited"),
+        },
+        outputSchema: { path: z.string(), created: z.boolean(), bytes: z.number() },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(
+        "add_source",
+        true,
+        async (a: { kind: (typeof SOURCE_KINDS)[number]; title: string; text: string }) => {
+          try {
+            const r = await addSource(deps.sink, a.text, {
+              kind: a.kind,
+              title: a.title,
+              now: now(),
+              reportedBy: client.id,
+            });
+            const sc = { path: r.path, created: r.created, bytes: r.bytes };
+            const text = `${r.created ? "Queued" : "Already queued"} ${r.kind} "${a.title}" at ${r.path}. The curator will summarize it into the wiki for the user to review.`;
+            return { content: [{ type: "text", text }], structuredContent: sc };
+          } catch (e) {
+            return fail(e instanceof Error ? e.message : String(e));
+          }
+        },
+      ),
     );
   }
 
