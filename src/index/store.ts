@@ -73,7 +73,14 @@ export class KnowledgeStore {
           c.meta.title,
           c.meta.description ?? "",
           c.body,
-          (c.meta.tags ?? []).join(" "),
+          // Lessons are found by their symptoms, and code pages by their path.
+          [
+            ...(c.meta.tags ?? []),
+            ...(c.meta.applies_when ?? []),
+            ...(c.meta.symptoms ?? []),
+            c.meta.repo ?? "",
+            c.meta.resource ?? "",
+          ].join(" "),
         );
       }
     })();

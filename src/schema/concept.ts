@@ -20,6 +20,13 @@ export const ConceptType = z.enum([
   "source",
   "concept",
   "synthesis",
+  // Code and team knowledge: a repo's map, one module (folder or package) of it, a feature that
+  // spans modules, a decision record (why it is built this way), and a lesson from a past problem.
+  "repo",
+  "module",
+  "feature",
+  "decision",
+  "lesson",
 ]);
 export type ConceptType = z.infer<typeof ConceptType>;
 
@@ -54,6 +61,14 @@ export const Source = z.object({
   last_modified: LooseDate.optional(),
 });
 
+/** Short repo name, as used by `kb scan --name` and `kb stale --repo <name>=<dir>`. */
+export const RepoName = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9._-]*$/, "repo must be a short lowercase name, e.g. my-app");
+
+/** A git commit: 7 to 40 hex characters. */
+export const Commit = z.string().regex(/^[0-9a-f]{7,40}$/, "commit must be a git sha");
+
 export const ConceptFrontmatter = z.looseObject({
   type: ConceptType,
   title: z.string().min(1).max(120),
@@ -67,6 +82,14 @@ export const ConceptFrontmatter = z.looseObject({
   sources: z.array(Source).min(1, "every concept needs at least one source"),
   generated: Actor.optional(),
   verified: z.array(Actor).optional(),
+  // Where the truth lives, as in OKF. With `repo`, a path inside that repo; otherwise a URL.
+  resource: z.string().min(1).optional(),
+  repo: RepoName.optional(),
+  /** The commit `resource` was read at. `kb stale --repo` flags the page once that path changes. */
+  commit: Commit.optional(),
+  // Lessons: when they apply and what the problem looks like, so a search for the symptom finds them.
+  applies_when: z.array(z.string().min(1)).optional(),
+  symptoms: z.array(z.string().min(1)).optional(),
 });
 export type ConceptFrontmatter = z.infer<typeof ConceptFrontmatter>;
 

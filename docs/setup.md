@@ -35,6 +35,7 @@ Any other source (an email, a meeting transcript, notes, a repo doc, a terminal 
 ```sh
 bun run kb add ~/Downloads/planning-call.vtt --kind transcript --title "Planning call 11/22"
 pbpaste | bun run kb add - --kind email --title "Vendor quote"
+bun run kb scan ../my-app --name my-app --exclude docs/customers   # a map of a code repo, not its code
 ```
 
 The curator also pulls from connected sources on each run: Gmail threads labeled `kb`, Google Drive docs in a folder named `kb-inbox`, and Slack threads marked with `:brain:` if Slack is connected.
