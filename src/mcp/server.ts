@@ -214,6 +214,13 @@ export function createServer(deps: ServerDeps): McpServer {
           last_updated: z.string(),
           stale_after: z.string().nullable(),
           sources: z.array(z.object({ resource: z.string(), origin: z.string().optional() })),
+          resource: z
+            .object({
+              repo: z.string().nullable(),
+              path: z.string(),
+              commit: z.string().nullable(),
+            })
+            .nullable(),
           links: z.array(z.string()),
           backlinks: z.array(z.string()),
           body: z.string(),
@@ -243,10 +250,16 @@ export function createServer(deps: ServerDeps): McpServer {
           last_updated: c.lastUpdated,
           stale_after: c.meta.stale_after ?? null,
           sources: c.meta.sources.map((s) => ({ resource: s.resource, origin: s.origin })),
+          resource: c.meta.resource
+            ? { repo: c.meta.repo ?? null, path: c.meta.resource, commit: c.meta.commit ?? null }
+            : null,
           ...store.related(c.id, allowed),
           body: c.body,
         };
         const rel = [
+          sc.resource
+            ? `Lives in: ${sc.resource.repo ? `${sc.resource.repo}:` : ""}${sc.resource.path}${sc.resource.commit ? ` (read at ${sc.resource.commit.slice(0, 7)})` : ""}`
+            : "",
           sc.links.length ? `Links to: ${sc.links.join(", ")}` : "",
           sc.backlinks.length ? `Linked from: ${sc.backlinks.join(", ")}` : "",
         ].filter(Boolean);

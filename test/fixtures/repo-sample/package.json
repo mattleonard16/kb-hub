@@ -1,0 +1,6 @@
+{
+  "name": "sample-mono",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": { "dev": "bun run --cwd apps/web dev", "test": "bun test" }
+}

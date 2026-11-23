@@ -223,6 +223,32 @@ export async function lintKnowledge(root: string): Promise<LintResult> {
  */
 const STANDALONE = new Set(["preference", "instruction", "fact"]);
 
+/** Pages about code say which repo, and where in it, they describe. */
+function repoFieldIssues(
+  file: string,
+  m: { type: string; repo?: string; resource?: string; commit?: string },
+): Issue[] {
+  const issue = (message: string): Issue => ({
+    file,
+    level: "error",
+    rule: "repo-fields",
+    message,
+  });
+  const out: Issue[] = [];
+  if ((m.type === "repo" || m.type === "module") && !m.repo)
+    out.push(issue(`a ${m.type} page needs repo: <name> (the name used with kb scan)`));
+  if (m.type === "module" && !m.resource)
+    out.push(issue("a module page needs resource: <path in the repo>"));
+  if (m.commit && !m.repo) out.push(issue("commit only makes sense with repo"));
+  if (
+    m.repo &&
+    m.resource &&
+    (/^\/|^[a-z]+:\/\//i.test(m.resource) || m.resource.split("/").includes(".."))
+  )
+    out.push(issue(`with repo set, resource is a path inside the repo, got "${m.resource}"`));
+  return out;
+}
+
 async function wikiIssues(root: string): Promise<Issue[]> {
   if (!(await exists(join(root, "wiki")))) return [];
   const issues: Issue[] = [];
@@ -261,6 +287,7 @@ async function wikiIssues(root: string): Promise<Issue[]> {
           "a source page must list the raw file it summarizes (sources: - resource: raw/...)",
       });
     }
+    issues.push(...repoFieldIssues(file, c.meta));
     for (const s of c.meta.sources) {
       if (/^(raw|inbox)\//.test(s.resource) && !(await exists(join(root, s.resource)))) {
         issues.push({

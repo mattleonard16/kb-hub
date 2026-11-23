@@ -13,10 +13,12 @@ import {
 import { writeIndex } from "./compile/wiki-index.ts";
 import { appendLog, type LogOp, listInbox, markProcessed, staleConcepts } from "./curator/inbox.ts";
 import { promote } from "./curator/promote.ts";
+import { parseRepoArgs, repoStale } from "./curator/repo-stale.ts";
 import { loadKnowledge } from "./index/load.ts";
 import { KnowledgeStore } from "./index/store.ts";
 import { ingestReply, ingestZip } from "./ingest/ingest.ts";
 import { extractionPrompt } from "./ingest/prompts.ts";
+import { renderScan, scanRepo } from "./ingest/scan.ts";
 import { addSource, isSourceKind, SOURCE_KINDS } from "./ingest/source.ts";
 import { FsSink } from "./lib/sinks.ts";
 import { lintKnowledge } from "./lint/lint.ts";
@@ -57,7 +59,10 @@ Curate (used by the curator skill)
   inbox                    List unprocessed inbox files (max 200 per run)
   inbox done <paths...>    Move them to raw/ (kept unchanged) and log it (--note "...")
   log <op> --note "..."    Append a log entry (op: ingest, query, lint, promote)
-  stale                    Pages past their stale_after date
+  scan <repo-dir>          Queue a map of a code repo: folders, packages, agent docs, docs catalog
+                           (--name <repo>, --exclude <path>, --depth N, --dry-run prints it)
+  stale [--repo n=<dir>]   Pages past their stale_after date, and with --repo, pages whose
+                           repo path changed since their commit
   promote <files...>       Mark concepts verified by you; drafts become stable (--by human:<login>)
 
 Control
@@ -120,6 +125,10 @@ export async function main(argv: string[]): Promise<number> {
       limit: { type: "string" },
       kind: { type: "string" },
       title: { type: "string" },
+      name: { type: "string" },
+      exclude: { type: "string", multiple: true },
+      depth: { type: "string" },
+      repo: { type: "string", multiple: true },
     },
   });
   const out: Out = { json: v.json };
@@ -169,6 +178,46 @@ export async function main(argv: string[]): Promise<number> {
         out,
         r,
         `${r.created ? "Queued" : "Already queued"} ${r.kind} (${r.bytes} bytes) at ${r.path}.${r.injection.length ? ` It contains instruction-like text (${r.injection.join(", ")}); the curator will not copy it.` : ""}`,
+      );
+      return 0;
+    }
+
+    case "scan": {
+      const dir = args[0];
+      if (!dir)
+        throw new UsageError(
+          "Usage: kb scan <repo-dir> [--name <repo>] [--exclude <path>]... [--depth N] [--dry-run]",
+        );
+      const name = (v.name ?? basename(resolve(dir)))
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, "-")
+        .replace(/^[^a-z0-9]+/, "");
+      if (!name) throw new UsageError("Give the repo a name with --name");
+      const depth = v.depth === undefined ? undefined : Number(v.depth);
+      if (depth !== undefined && !(Number.isInteger(depth) && depth > 0))
+        throw new UsageError("--depth takes a whole number, 1 or more");
+      const scan = await scanRepo(resolve(dir), { name, exclude: v.exclude, depth });
+      const text = renderScan(scan);
+      if (v["dry-run"]) {
+        console.log(out.json ? JSON.stringify(scan, null, 2) : text);
+        return 0;
+      }
+      const r = await addSource(new FsSink(root), text, {
+        kind: "repo",
+        title: `${name} repo scan`,
+      });
+      const summary = {
+        ...r,
+        repo: name,
+        commit: scan.commit,
+        files: scan.files,
+        packages: scan.packages.length,
+        docs: scan.docs.length,
+      };
+      print(
+        out,
+        summary,
+        `${r.created ? "Queued" : "Already queued"} a map of ${name}${scan.commit ? ` at ${scan.commit.slice(0, 7)}` : ""} (${scan.files} files, ${scan.packages.length} packages, ${scan.docs.length} docs) at ${r.path}.`,
       );
       return 0;
     }
@@ -356,13 +405,20 @@ export async function main(argv: string[]): Promise<number> {
     }
 
     case "stale": {
-      const s = staleConcepts((await loadKnowledge(root)).concepts);
-      print(
-        out,
-        s,
-        s.map((c) => `${c.id}  ${c.title}  (stale since ${c.stale_after})`).join("\n") ||
-          "Nothing is stale.",
-      );
+      const { concepts } = await loadKnowledge(root);
+      const s = staleConcepts(concepts);
+      let repos: Map<string, string>;
+      try {
+        repos = parseRepoArgs(v.repo ?? []);
+      } catch (e) {
+        throw new UsageError((e as Error).message);
+      }
+      const changed = repoStale(concepts, repos);
+      const lines = [
+        ...s.map((c) => `${c.id}  ${c.title}  (stale since ${c.stale_after})`),
+        ...changed.map((c) => `${c.id}  ${c.title}  (${c.reason})`),
+      ];
+      print(out, { dates: s, repos: changed }, lines.join("\n") || "Nothing is stale.");
       return 0;
     }
 

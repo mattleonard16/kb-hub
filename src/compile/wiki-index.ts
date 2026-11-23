@@ -9,6 +9,11 @@ const SECTIONS: Array<[string, string]> = [
   ["people", "People"],
   ["tools", "Tools"],
   ["data-access", "Data access"],
+  ["repos", "Repos"],
+  ["modules", "Modules"],
+  ["features", "Features"],
+  ["decisions", "Decisions"],
+  ["lessons", "Lessons"],
   ["topics", "Topics"],
   ["sources", "Sources"],
 ];
