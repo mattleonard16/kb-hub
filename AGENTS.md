@@ -14,7 +14,7 @@ This repo is the **code**. The **data** lives in a separate private repo, `knowl
 | `bun run kb <command>` | Run the CLI from source (`bun run kb help`) |
 | `bun run build` | Single binary at `dist/kb` |
 
-Every CLI command takes `--json` for machine-readable output. Exit codes: 0 ok, 1 validation failed, 2 usage error or not built yet.
+Every CLI command takes `--json` for machine-readable output. Exit codes: 0 ok, 1 validation failed, 2 usage error.
 
 ## Module map
 
