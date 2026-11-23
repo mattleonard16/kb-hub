@@ -10,4 +10,6 @@ bun run check                         # verify everything
 bun run kb lint ../knowledge          # validate a knowledge repo
 ```
 
-See [AGENTS.md](AGENTS.md) for the module map, commands and rules.
+- [Local setup](docs/setup.md): create your knowledge repo, ingest from each assistant, connect Claude Code and Codex.
+- [Hosted server](docs/deploy.md): OAuth-protected MCP for Claude web, Duet and ChatGPT.
+- [AGENTS.md](AGENTS.md): module map, commands and rules for agents working on this repo.

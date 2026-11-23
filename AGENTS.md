@@ -9,7 +9,7 @@ This repo is the **code**. The **data** lives in a separate private repo, `knowl
 | Command | What it does |
 | --- | --- |
 | `bun install` | Install (CI uses `bun install --frozen-lockfile`) |
-| `bun run check` | Dependency allowlist, typecheck, lint, tests. **Run before finishing any change.** About 5 seconds. |
+| `bun run check` | Dependency allowlist, typecheck, lint, tests. **Run before finishing any change.** About 3 seconds. |
 | `bun test` | Tests only |
 | `bun run kb <command>` | Run the CLI from source (`bun run kb help`) |
 | `bun run build` | Single binary at `dist/kb` |
@@ -24,10 +24,13 @@ Every CLI command takes `--json` for machine-readable output. Exit codes: 0 ok, 
 | `src/lib/` | Small shared helpers: frontmatter parsing (`Bun.YAML`), secret detection |
 | `src/lint/` | `kb lint`: validates a knowledge repo |
 | `src/ingest/` | `kb ingest`: parse pasted extraction replies and export ZIPs into `inbox/` |
-| `src/index/` | `kb index`: SQLite FTS5 search index built from the knowledge repo |
-| `src/mcp/` | MCP server: tools, stdio and HTTP transports |
-| `src/compile/` | `kb compile` / `kb sync`: CLAUDE.md, AGENTS.md, skills, paste blocks |
-| `src/curator/` | The curator skill (run as a scheduled Claude task, not code) |
+| `src/index/` | Loads a knowledge repo and builds an in-memory `bun:sqlite` FTS5 index (rebuilt on start and on reload) |
+| `src/mcp/` | MCP server (`server.ts`), policy (scopes, rate limits, lockdown, audit), stdio, HTTP + OAuth (`http.ts`, `oauth.ts`) |
+| `src/compile/` | `kb compile`, `kb sync`, `kb paste`, `kb status`: CLAUDE.md and AGENTS.md sections, skills, paste blocks |
+| `src/curator/` | `SKILL.md` (the curator, run as a scheduled Claude task) and helpers: `kb inbox`, `kb stale`, `kb promote` |
+| `templates/knowledge/` | What `kb init` creates: the private knowledge repo, with its AGENTS.md, workflow and usage skill |
+| `deploy/`, `Dockerfile`, `fly.toml` | Hosted server. See `docs/deploy.md` |
+| `docs/` | `setup.md` (local) and `deploy.md` (hosted) |
 | `prompts/extract/` | Versioned extraction prompts, one base plus one tail per tool |
 | `test/fixtures/` | Real-shaped inputs. Prefer adding a fixture over mocking. |
 

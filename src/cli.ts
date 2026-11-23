@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { compileAll } from "./compile/compile.ts";
@@ -10,6 +10,8 @@ import {
   recordDelivery,
   syncTargets,
 } from "./compile/sync.ts";
+import { listInbox, markProcessed, staleConcepts } from "./curator/inbox.ts";
+import { promote } from "./curator/promote.ts";
 import { loadKnowledge } from "./index/load.ts";
 import { KnowledgeStore } from "./index/store.ts";
 import { ingestReply, ingestZip } from "./ingest/ingest.ts";
@@ -44,6 +46,13 @@ Deliver it
   sync [--dry-run]         Update ~/.claude and ~/.codex (marked section + skills)
   paste <tool>             Print the paste block for chatgpt, claude, gemini, muse or instinct
   status                   How many changes behind each tool is
+
+Curate (used by the curator skill)
+  init <dir>               Create a new knowledge repo from the template
+  inbox                    List unprocessed inbox files (max 200 per run)
+  inbox done <paths...>    Move them to inbox/processed/ and log it (--note "...")
+  stale                    Concepts past their stale_after date
+  promote <files...>       Mark concepts verified by you; drafts become stable (--by human:<login>)
 
 Control
   audit [--days N]         What each client read or wrote (default 7 days)
@@ -99,6 +108,8 @@ export async function main(argv: string[]): Promise<number> {
       zip: { type: "string" },
       http: { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
+      note: { type: "string" },
+      by: { type: "string" },
       days: { type: "string" },
       limit: { type: "string" },
     },
@@ -253,6 +264,75 @@ export async function main(argv: string[]): Promise<number> {
               `${t.tool.padEnd(12)} ${t.changes_behind ? `${t.changes_behind} change(s) behind` : "up to date"}${t.last_delivered ? `  (last ${t.last_delivered.slice(0, 10)})` : "  (never delivered)"}`,
           )
           .join("\n"),
+      );
+      return 0;
+    }
+
+    case "init": {
+      const dest = resolve(args[0] ?? "");
+      if (!args[0]) throw new UsageError("Usage: kb init <dir>");
+      const existing = await readdir(dest).catch(() => []);
+      if (existing.length) throw new UsageError(`${dest} is not empty`);
+      await cp(new URL("../templates/knowledge/", import.meta.url).pathname, dest, {
+        recursive: true,
+      });
+      await rename(join(dest, "gitignore.txt"), join(dest, ".gitignore"));
+      print(
+        out,
+        { created: dest },
+        `Created a knowledge repo at ${dest}. Next: git init, push it as a private repo, and set KB_KNOWLEDGE_DIR=${dest}.`,
+      );
+      return 0;
+    }
+
+    case "inbox": {
+      if (args[0] === "done") {
+        const paths = args.slice(1);
+        if (!paths.length || !v.note)
+          throw new UsageError('Usage: kb inbox done <paths...> --note "summary"');
+        const moved = await markProcessed(root, paths, v.note);
+        print(
+          out,
+          { moved },
+          `Moved ${moved.length} file(s) to inbox/processed/ and updated knowledge/log.md.`,
+        );
+        return 0;
+      }
+      const r = await listInbox(root, Number(v.limit ?? 200));
+      print(
+        out,
+        r,
+        r.entries
+          .map(
+            (e) =>
+              `${e.kind.padEnd(10)} ${e.path}${e.suspicious ? "  (suspicious: review, do not promote)" : ""}`,
+          )
+          .join("\n") + (r.remaining ? `\n${r.remaining} more carry over to the next run.` : "") ||
+          "Inbox is empty.",
+      );
+      return 0;
+    }
+
+    case "stale": {
+      const s = staleConcepts((await loadKnowledge(root)).concepts);
+      print(
+        out,
+        s,
+        s.map((c) => `${c.id}  ${c.title}  (stale since ${c.stale_after})`).join("\n") ||
+          "Nothing is stale.",
+      );
+      return 0;
+    }
+
+    case "promote": {
+      if (!args.length || !v.by)
+        throw new UsageError("Usage: kb promote <files...> --by human:<login>");
+      const r = await promote(args, v.by);
+      print(
+        out,
+        r,
+        r.map((x) => `${x.file}: ${x.from} -> ${x.to}, verified`).join("\n") ||
+          "Nothing to promote.",
       );
       return 0;
     }
