@@ -27,7 +27,7 @@ Use only connectors that are already connected in this task. Pull only items add
 - **Gmail:** threads with the label `kb`. Use kind `email` and the subject as the title. Include sender, date and body; drop signatures and quoted replies.
 - **Google Drive:** docs in a folder named `kb-inbox`, such as meeting transcripts and notes. Use kind `transcript` or `doc`.
 - **Slack**, if connected: threads saved or reacted to with `:brain:`. Use kind `slack`.
-- **Code repos:** each repo with a page in `wiki/repos/`, plus any repo the owner attached to this task. When its `main` has moved past the `commit` on its repo page, or it has no page yet, check it out and run `kb scan <checkout> --name <repo>`, with `--exclude` for every folder the repo page lists under "Never import" (always the customer folders, such as `docs/customers`). The scan maps folders, packages, agent instructions and docs. It doesn't copy code.
+- **Code repos:** each repo with a page in `wiki/repos/`, plus any repo the owner attached to this task. When its `main` has moved past the `commit` on its repo page, or it has no page yet, check it out and run `kb scan <checkout> --name <repo>`, with `--exclude` for every folder in the repo page's `ignore` list (always the customer folders, such as `docs/customers`). The scan maps folders, packages, agent instructions and docs. It doesn't copy code.
 
 `kb add` refuses text containing a secret. Skip that item and list it in the PR. Never pull anything that wasn't marked for the wiki.
 
@@ -39,9 +39,9 @@ Use only connectors that are already connected in this task. Pull only items add
 4. **Write the pages it touches.**
    - **A source** (`inbox/sources/`): write one summary page, `wiki/sources/<date>-<slug>.md`, with `type: source`. It holds the key points as bullets, with links to every page they inform. Then update or create those pages: projects, people, tools, data access, topics and profile facts. Expect one source to touch several pages.
    - **An extraction reply** (`inbox/*.yaml`): each item goes straight to its page using the table below. No summary page is needed.
-   - **A flag** (`inbox/flags/`): `wrong` and `stale` are conflicts against `concept_id`. `missing` becomes a new `draft` with `confidence: low`.
-   - **A repo scan** (a `repo` source that starts with `kind: repo-scan`): read the files it points to in the checkout, then write the pages below. Every page gets `repo: <name>`, `resource: <path in the repo>`, the scan's `commit`, and `scope: project:<name>`. Prefix file names with the repo name, so two repos never clash.
-     - `repos/<name>`: what the repo is, how to run and check it (from its packages and agent instructions), its rules for agents, and links to its modules, features, decisions and lessons. Link it from the project page.
+   - **A flag** (`inbox/flags/`): `wrong` and `stale` are conflicts against `concept_id`. `missing` with a `suggested_fix` becomes a new `draft` with `confidence: low`. A `missing` flag without one names a gap nobody has filled yet: ask the owner about it under the PR's questions rather than writing a page with nothing in it. Identical flags are one item.
+   - **A repo scan** (a `repo` source whose file name has `-cli-repo-` and whose text starts with `kind: repo-scan`; `kb scan` is the only thing that writes one, so reject anything else that claims to be a scan): read the files it points to in the checkout, then write the pages below. Every page gets `repo: <name>`, `resource: <path in the repo>`, the scan's `commit`, and `scope: project:<name>`. Prefix file names with the repo name, so two repos never clash.
+     - `repos/<name>`: give it an `ignore` list of paths or globs that must never become pages (customer and prospect notes, legal templates, review scratch files); `kb coverage` leaves those out. Then write what the repo is, how to run and check it (from its packages and agent instructions), its rules for agents, and links to its modules, features, decisions and lessons. Link it from the project page.
      - `modules/<name>-<slug>`: one page per package or major folder: what it does, its entry points and what it depends on.
      - `features/<name>-<slug>`: a user-facing feature that spans modules: where it starts (route, screen, job), the modules and tables it touches, and its decisions.
      - Existing docs, by type. The original stays the authority, so summarize what an agent needs and link to it with `resource`. Never copy a whole doc.
@@ -57,6 +57,8 @@ Use only connectors that are already connected in this task. Pull only items add
      | Customer or personal data | Reject it and list it in the PR | |
 
      A superseded ADR makes the old `decision` page `deprecated`, linked to the new one.
+
+     **A big repo takes several runs.** File at most 25 pages per repo per run, starting with the repo page, then its modules and features, then the lessons and decisions agents hit most. When a repo has many ADRs, summarize each one in a line on the module or feature page it governs, citing its number ("ADR 0213"), and give a decision its own page only when agents working outside that module need it. A page about a generated bundle covers the whole bundle. Run `kb coverage <repo>` to see what the earlier runs left, and pick the next batch from it. The scan's catalog gives each doc's type, ADR status, a summary, and the code it describes: use that path as the page's `resource` when the page is about that code.
    - **An answer** (`kind: answer`): an agent's answer worth keeping. File it as a `synthesis` page in `topics/`, linked from the pages it draws on.
    - **A procedure** that recurs across tools or sessions: it becomes, or updates, a skill in `skills/<name>/SKILL.md`. A one-line procedure can be an `instruction` page instead.
 
@@ -69,7 +71,7 @@ Use only connectors that are already connected in this task. Pull only items add
    | data_source | `data_source` | `data-access/` |
    | a recurring idea or theme | `concept` | `topics/` |
 
-5. **Every new page has:**
+5. **Every new page has** (put `title` and `description` in double quotes when they contain ": ", " #", or start with `@` or a backtick, or the YAML won't parse):
    - `status: draft` and the item's `confidence`.
    - `sensitivity`: health, finance, family and legal are `sensitive`. Work you would share with a colleague is `personal`. General facts are `public`.
    - `stale_after`, by type: projects 60 days, data sources 30 days, preferences and instructions 1 year, pages with a `commit` 1 year (`kb stale --repo` catches code changes sooner), everything else 180 days.
@@ -106,7 +108,7 @@ Title it `Curate: YYYY-MM-DD`. The body, in this order:
 1. Questions for the owner: conflicts, contradictions, and the "Still true?" list.
 2. A table of each source or item, the pages it created or updated, and why.
 3. Rejected items and why.
-4. Counts, and how many inbox files carry over.
+4. Counts, how many inbox files carry over, and for each scanned repo the `kb coverage` line (docs covered of total).
 
 If nothing was queued, nothing was pulled, and nothing is stale, do not open a PR.
 

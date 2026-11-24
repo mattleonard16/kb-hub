@@ -14,6 +14,25 @@ export function parseFrontmatter(text: string): ParsedDoc {
     }
     return { ok: true, data, body };
   } catch (err) {
-    return { ok: false, error: `invalid YAML: ${(err as Error).message}` };
+    const hint = quoteHint(yaml);
+    return {
+      ok: false,
+      error: `invalid YAML: ${(err as Error).message}${hint ? `. ${hint}` : ""}`,
+    };
   }
+}
+
+/**
+ * The usual cause of a YAML error in a page: an unquoted value that contains ": " or starts with
+ * a character YAML reserves, such as `description: @scope/pkg: the web app`.
+ */
+export function quoteHint(yaml: string): string | null {
+  for (const line of yaml.split(/\r?\n/)) {
+    const m = /^([A-Za-z_][\w-]*): (.+)$/.exec(line);
+    const [, key, value = ""] = m ?? [];
+    if (!key || /^["'[{|>]/.test(value)) continue;
+    if (/: |\s#/.test(value) || /^[@`%&*!]/.test(value))
+      return `Put the value of "${key}" in double quotes: it contains ": " or " #", or starts with a reserved character`;
+  }
+  return null;
 }

@@ -38,7 +38,17 @@ export type ScanPackage = {
   description?: string;
   scripts: string[];
 };
-export type ScanDoc = { path: string; type?: string; title: string; description?: string };
+export type ScanDoc = {
+  path: string;
+  type?: string;
+  /** An ADR's status line ("Accepted", "Superseded by 0123"). */
+  status?: string;
+  title: string;
+  /** The description, else the first symptom or applies_when line, else the first sentence. */
+  summary?: string;
+  /** The code the doc describes: OKF `resource`, or an ADR's first `**Code:**` path. */
+  code?: string;
+};
 export type RepoScan = {
   name: string;
   remote: string | null;
@@ -125,17 +135,43 @@ function isDoc(f: string): boolean {
   );
 }
 
+function firstSentence(body: string): string | undefined {
+  const para = body
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .find((p) => p && !/^(#|\*\*\w+:\*\*|```|\||-{3})/.test(p));
+  if (!para) return undefined;
+  const flat = para.replace(/\s+/g, " ");
+  const end = flat.search(/\.(\s|$)/);
+  const sentence = end > 0 ? flat.slice(0, end + 1) : flat;
+  return sentence.length > 200 ? `${sentence.slice(0, 199)}…` : sentence;
+}
+
 function docEntry(path: string, text: string): ScanDoc {
   const fm = parseFrontmatter(text);
   const meta = fm.ok ? (fm.data as Record<string, unknown>) : {};
   const body = fm.ok ? fm.body : text;
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  const first = (v: unknown) => (Array.isArray(v) ? str(v[0]) : str(v));
   const heading = /^#\s+(.+)$/m.exec(body)?.[1]?.trim();
+  const status = /^\*\*Status:\*\*\s*(.+)$/m.exec(body)?.[1]?.trim();
+  const codeLine = /^\*\*Code:\*\*\s*(.+)$/m.exec(body)?.[1];
+  const isAdr =
+    !!status && (/(^|\/)(adr|decisions)\//.test(path) || /^\d{3,4}\./.test(heading ?? ""));
   return {
     path,
-    type: str(meta.type) ?? str(meta.problem_type),
+    type: str(meta.type) ?? str(meta.problem_type) ?? (isAdr ? "adr" : undefined),
+    status: isAdr ? status : undefined,
     title: str(meta.title) ?? str(meta.name) ?? heading ?? posix.basename(path),
-    description: str(meta.description),
+    summary:
+      str(meta.description) ??
+      first(meta.symptoms) ??
+      first(meta.applies_when) ??
+      firstSentence(body.replace(/^#\s+.+$/m, "")),
+    code:
+      str(meta.resource)?.replace(/^\/+/, "") ??
+      (codeLine ? /`([^`]+)`/.exec(codeLine)?.[1] : undefined) ??
+      (str(meta.module)?.includes("/") ? str(meta.module) : undefined),
   };
 }
 
@@ -214,6 +250,14 @@ export async function scanRepo(
 
   const docs: ScanDoc[] = [];
   for (const f of files.filter(isDoc).slice(0, MAX_DOCS)) {
+    // A symlinked doc (AGENTS.md -> CLAUDE.md) is listed under Agent instructions already.
+    if (
+      await lstat(join(dir, f)).then(
+        (st) => st.isSymbolicLink(),
+        () => false,
+      )
+    )
+      continue;
     try {
       docs.push(docEntry(f, await head(dir, f)));
     } catch {
@@ -302,9 +346,14 @@ export function renderScan(s: RepoScan): string {
   }
   for (const [g, list] of groups) {
     out.push("", `### ${g === "." ? "(root)" : g} (${list.length})`, "");
-    out.push("| Path | Type | Title | Description |", "| --- | --- | --- | --- |");
+    out.push(
+      "| Path | Type | Status | Title | Summary | Code |",
+      "| --- | --- | --- | --- | --- | --- |",
+    );
     for (const d of list)
-      out.push(`| \`${d.path}\` | ${cell(d.type)} | ${cell(d.title)} | ${cell(d.description)} |`);
+      out.push(
+        `| \`${d.path}\` | ${cell(d.type)} | ${cell(d.status)} | ${cell(d.title)} | ${cell(d.summary)} | ${d.code ? `\`${cell(d.code)}\`` : ""} |`,
+      );
   }
   return `${out.join("\n")}\n`;
 }

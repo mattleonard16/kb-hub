@@ -3,7 +3,7 @@ import { join, relative, sep } from "node:path";
 import { renderIndex } from "../compile/wiki-index.ts";
 import { loadKnowledge } from "../index/load.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
-import { linkGraph } from "../lib/links.ts";
+import { linkGraph, toId } from "../lib/links.ts";
 import { findSecrets } from "../lib/secrets.ts";
 import { ConceptFrontmatter, SkillFrontmatter } from "../schema/concept.ts";
 
@@ -261,7 +261,9 @@ async function wikiIssues(root: string): Promise<Issue[]> {
         file,
         level: "error",
         rule: "broken-link",
-        message: `links to "${t}", which is not a page (or matches more than one). Use the page id, e.g. [[projects/kb-hub]].`,
+        message: (await exists(join(root, "wiki", `${toId(t)}.md`)))
+          ? `links to "${t}", whose frontmatter is invalid (see its own error); fix that page and this link resolves`
+          : `links to "${t}", which is not a page (or matches more than one). Use the page id, e.g. [[projects/kb-hub]].`,
       });
     }
     // Single preferences, instructions and facts stand alone; everything else should be linked.

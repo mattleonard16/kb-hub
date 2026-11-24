@@ -42,7 +42,7 @@ Raw data, code layout, feature maps and existing knowledge bases all go through 
 | Feature maps | The scan plus the code the curator reads in the checkout | `features/<repo>-*`, linked to the project, modules, decisions and people |
 | Existing knowledge bases: OKF bundles, ADRs, solutions docs, glossaries | Listed in the scan's docs catalog with their type, title and description | `decisions/`, `lessons/`, `modules/` and `topics/` pages that summarize and link back. The original stays the authority. |
 
-When a repo moves on, `kb stale --repo <repo>=<checkout>` lists the pages whose path changed since their `commit`, and the next curator run refreshes them. `search_knowledge` filters by `type` and `scope`, so an agent can ask for one repo's features or only the owner's preferences. Lessons are found by their `symptoms`, and code pages by their path.
+A big repo takes several curator runs: each one files at most 25 pages per repo, and `kb coverage <repo>` lists the docs in the latest scan that no page covers yet, so the next run knows where to pick up. When a repo moves on, `kb stale --repo <repo>=<checkout>` lists the pages whose path changed since their `commit`, and the next curator run refreshes them. Search puts pages that match more of the question first, and a path (`apps/web/src/lib/ai`) finds the page whose `resource` is that path or the closest folder above it. `search_knowledge` filters by `type` and `scope`, so an agent can ask for one repo's features or only the owner's preferences. Lessons are found by their `symptoms`, and code pages by their path.
 
 Rules the code enforces:
 
