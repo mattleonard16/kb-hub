@@ -98,8 +98,9 @@ If you are still unsure, leave the page unchanged and add a question to the PR.
 1. `kb lint` must pass with no errors. Fix every `broken-link`. Fix `orphan` warnings by linking each page from the project, person, topic or source page it belongs to.
 2. Read the pages you touched next to their linked pages, and look for claims that contradict each other. Put each one in the PR as a question; don't pick a side silently.
 3. `kb stale --json --repo <name>=<checkout>` (one `--repo` for each repo checked out) lists pages past `stale_after`, and pages whose `resource` changed since their `commit`. Update each changed page from the repo and set its `commit` to the new one. Put pages past `stale_after`, and changed pages you can't settle from the code, in a "Still true?" section. If a page was already listed in the previous curator PR and the owner didn't confirm it, set `status: deprecated`.
-4. Run `kb index` to regenerate `wiki/index.md`.
-5. Run `kb log lint --note "<what you found>"`.
+4. **Add a search question for each new page** to `evals/search.yaml`: what an agent would really ask, in its words, not the page title (`- q: users get ChunkLoadError right after a deploy` with `expect: lessons/<page>`). Then run `kb eval`. For each miss, fix the page first: make its first paragraph and `description` say plainly what it answers. Point the question at a different page only when that page really answers it better. The PR check fails below 80% in the top 3.
+5. Run `kb index` to regenerate `wiki/index.md`.
+6. Run `kb log lint --note "<what you found>"`.
 
 ## 4. Open the PR
 
@@ -108,7 +109,7 @@ Title it `Curate: YYYY-MM-DD`. The body, in this order:
 1. Questions for the owner: conflicts, contradictions, and the "Still true?" list.
 2. A table of each source or item, the pages it created or updated, and why.
 3. Rejected items and why.
-4. Counts, how many inbox files carry over, and for each scanned repo the `kb coverage` line (docs covered of total).
+4. Counts, the `kb eval` line (questions, first, top 3), how many inbox files carry over, and for each scanned repo the `kb coverage` line (docs covered of total).
 
 If nothing was queued, nothing was pulled, and nothing is stale, do not open a PR.
 

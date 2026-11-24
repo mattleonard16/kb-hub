@@ -27,6 +27,8 @@ jobs:
         with: { bun-version: 1.4.4 }
       - run: cd .kb-hub && bun install --frozen-lockfile
       - run: bun .kb-hub/src/cli.ts lint --dir .
+      # Search must still find the right page for the questions in evals/search.yaml.
+      - run: bun .kb-hub/src/cli.ts eval --dir . --min 0.8
       # raw/ is write-once: a PR may add raw sources but never change or delete one.
       - name: raw/ is unchanged
         run: |

@@ -15,6 +15,7 @@ import { coverage } from "./curator/coverage.ts";
 import { appendLog, type LogOp, listInbox, markProcessed, staleConcepts } from "./curator/inbox.ts";
 import { promote } from "./curator/promote.ts";
 import { parseRepoArgs, repoStale } from "./curator/repo-stale.ts";
+import { EVAL_FILE, loadEval, runEval } from "./eval/search-eval.ts";
 import { loadKnowledge } from "./index/load.ts";
 import { KnowledgeStore } from "./index/store.ts";
 import { ingestReply, ingestZip } from "./ingest/ingest.ts";
@@ -44,6 +45,8 @@ Check and search
   lint                     Validate the knowledge repo (schema, links, orphans, index)
   search <words>           Search pages (local, sees everything)
   index                    Regenerate wiki/index.md, the catalog of every page
+  eval                     Score search on evals/search.yaml: questions and the page that should
+                           answer each (--min 0.8 fails below 80% in the top 3, --hosted)
 
 Serve it to agents
   serve                    MCP over stdio for Claude Code and Codex
@@ -131,6 +134,9 @@ export async function main(argv: string[]): Promise<number> {
       exclude: { type: "string", multiple: true },
       depth: { type: "string" },
       repo: { type: "string", multiple: true },
+      file: { type: "string" },
+      min: { type: "string" },
+      hosted: { type: "boolean", default: false },
     },
   });
   const out: Out = { json: v.json };
@@ -309,6 +315,40 @@ export async function main(argv: string[]): Promise<number> {
           .join("\n") || "No matches.",
       );
       return 0;
+    }
+
+    case "eval": {
+      const min = v.min === undefined ? undefined : Number(v.min);
+      if (min !== undefined && !(min >= 0 && min <= 1))
+        throw new UsageError("--min takes a share of questions, from 0 to 1, such as 0.8");
+      const cases = await loadEval(root, v.file);
+      if (!cases) throw new UsageError(`No ${v.file ?? EVAL_FILE} in ${root}. See kb help.`);
+      const store = new KnowledgeStore(await loadKnowledge(root));
+      // --hosted scores what the hosted server can serve: sensitive pages are never there.
+      const r = runEval(
+        store,
+        cases,
+        v.hosted ? ["public", "personal"] : ["public", "personal", "sensitive"],
+      );
+      const pct = (x: number) => `${Math.round(x * 100)}%`;
+      const ok = !r.unknown.length && (min === undefined || !r.cases || r.hit3 >= min);
+      print(
+        out,
+        { ...r, ok },
+        [
+          r.cases ? "" : "No questions yet: the curator adds one for each new page.",
+          `${r.cases} questions: ${pct(r.hit1)} first, ${pct(r.hit3)} in the top 3, MRR ${r.mrr.toFixed(2)}.`,
+          ...r.unknown.map((u) => `  not a page: ${u.id}  (for "${u.q}")`),
+          ...r.misses.map(
+            (m) =>
+              `  ${m.rank ? `#${m.rank}` : "missed"}  "${m.q}"  wanted ${m.expect.join(" or ")}, got ${m.got.join(", ") || "nothing"}`,
+          ),
+          min !== undefined && r.hit3 < min ? `Below --min ${min}.` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      return ok ? 0 : 1;
     }
 
     case "serve": {
