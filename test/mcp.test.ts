@@ -136,7 +136,7 @@ describe("MCP server", () => {
     const { call } = await connect();
     const r = await call("add_source", {
       kind: "repo",
-      title: "teamnetwork repo scan",
+      title: "app repo scan",
       text: "---\nkind: repo-scan\nrepo: app\ncommit: abcdef1\n---\n# Repo scan: app\n",
     });
     expect(r.isError).toBe(true);
