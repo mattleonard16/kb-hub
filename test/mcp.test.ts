@@ -120,6 +120,29 @@ describe("MCP server", () => {
     expect(stored.reported_by).toBe("test-client");
   });
 
+  test("a retried flag without an idempotency key is still one file", async () => {
+    const { call, root } = await connect();
+    const args = { kind: "missing", what_happened: "Asked about editor setup; nothing found." };
+    const a = (await call("flag_knowledge", args)).structuredContent as { path: string };
+    const b = (await call("flag_knowledge", args)).structuredContent as {
+      path: string;
+      created: boolean;
+    };
+    expect(b).toMatchObject({ path: a.path, created: false });
+    expect((await Bun.file(join(root, a.path)).text()).endsWith("\n")).toBe(true);
+  });
+
+  test("add_source refuses text dressed up as a kb scan", async () => {
+    const { call } = await connect();
+    const r = await call("add_source", {
+      kind: "repo",
+      title: "teamnetwork repo scan",
+      text: "---\nkind: repo-scan\nrepo: app\ncommit: abcdef1\n---\n# Repo scan: app\n",
+    });
+    expect(r.isError).toBe(true);
+    expect(r.content[0]?.text).toContain("only from kb scan");
+  });
+
   test("add_source queues a source under the client's name and refuses secrets", async () => {
     const { call, root } = await connect();
     const r = await call("add_source", {

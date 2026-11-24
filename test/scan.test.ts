@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { cp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { main } from "../src/cli.ts";
+import { coverage, scanDocs } from "../src/curator/coverage.ts";
 import { parseRepoArgs, repoStale } from "../src/curator/repo-stale.ts";
 import { loadKnowledge } from "../src/index/load.ts";
 import { KnowledgeStore } from "../src/index/store.ts";
@@ -61,9 +62,20 @@ describe("kb scan", () => {
       type: "codemap",
       title: "AI assistant codemap",
     });
-    expect(docs.get("docs/adr/0001-default-model.md")?.title).toBe(
-      "0001. Default model for the assistant",
+    expect(docs.get("docs/adr/0001-default-model.md")).toMatchObject({
+      type: "adr",
+      status: "Accepted",
+      title: "0001. Default model for the assistant",
+      summary: "The assistant defaults to the small model to keep cost down.",
+      code: "apps/web/src/lib/ai/client.ts",
+    });
+    // A lesson with no description is summarized by its first symptom.
+    expect(docs.get("docs/solutions/runtime-errors/stream-hang.md")?.summary).toBe(
+      "The client sees the answer but the request never closes",
     );
+    expect(docs.get("docs/agent/ai-codemap.md")?.code).toBe("apps/web/src/lib/ai/client.ts");
+    // The AGENTS.md symlink is listed once, under agent instructions.
+    expect(docs.has("AGENTS.md")).toBe(false);
     expect(docs.get("docs/solutions/runtime-errors/stream-hang.md")?.type).toBe("runtime_error");
     expect([...docs.keys()].some((p) => p.startsWith("docs/customers"))).toBe(false);
 
@@ -241,5 +253,42 @@ describe("pages about code", () => {
     expect(
       store.search("lib ai", { allowed: [...all.allowed], type: "module" }).results[0]?.id,
     ).toBe("modules/sample-ai");
+  });
+});
+
+describe("kb coverage", () => {
+  test("lists the docs of the latest scan that no page covers yet", async () => {
+    const dir = await sampleRepo();
+    const root = join(await tempDir(), "knowledge");
+    expect(await quiet(() => main(["init", root]))).toBe(0);
+    expect(
+      await quiet(() => main(["scan", dir, "--dir", root, "--exclude", "docs/customers"])),
+    ).toBe(0);
+    await expect(coverage(root, "sample", [])).rejects.toThrow("no kb scan");
+
+    const queued = Bun.spawnSync(["ls", join(root, "inbox/sources")])
+      .stdout.toString()
+      .trim();
+    await mkdir(join(root, "raw/sources"), { recursive: true });
+    await cp(join(root, "inbox/sources", queued), join(root, "raw/sources", queued));
+    const text = await readFile(join(root, "raw/sources", queued), "utf8");
+    expect(scanDocs(text).map((d) => d.path)).toContain("docs/adr/0001-default-model.md");
+
+    const page = (resource: string, body: string) => ({ body, meta: { repo: "sample", resource } });
+    const before = await coverage(root, "sample", []);
+    // README, CLAUDE.md and the OKF index are skipped; the rest are waiting.
+    expect(before.uncovered.map((d) => d.path).sort()).toEqual([
+      "docs/adr/0001-default-model.md",
+      "docs/agent/ai-codemap.md",
+      "docs/solutions/runtime-errors/stream-hang.md",
+    ]);
+    const after = await coverage(root, "sample", [
+      page("apps/web/src/lib/ai", "Picks the default model (ADR 0001)."),
+      page("docs/solutions/runtime-errors/stream-hang.md", "Move background work into after()."),
+      page("docs/agent", "The agent bundle."),
+      { body: "docs/adr/0001-default-model.md", meta: { repo: "other", resource: "." } },
+    ]);
+    expect(after).toMatchObject({ repo: "sample", total: 3, covered: 3, uncovered: [] });
+    expect(after.commit).toBe(git(dir, "rev-parse", "HEAD"));
   });
 });

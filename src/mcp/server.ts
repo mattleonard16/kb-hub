@@ -345,14 +345,22 @@ export function createServer(deps: ServerDeps): McpServer {
               `Flag not saved: it looks like it contains a secret (${secrets.join(", ")}). Remove it and retry.`,
             );
           const injection = findInjection(text);
-          const yaml = Bun.YAML.stringify(
+          const yaml = `${Bun.YAML.stringify(
             injection.length ? { ...flag, flags: injection.map((n) => `injection:${n}`) } : flag,
             null,
             2,
-          );
+          ).trimEnd()}\n`;
           if (new TextEncoder().encode(yaml).length > MAX_FLAG_BYTES)
             return fail(`Flag too large; keep it under ${MAX_FLAG_BYTES} bytes.`);
-          const rel = flagPath(client.id, yaml, a.idempotency_key, now());
+          // Named by what it says, not when: an agent that retries without an idempotency key
+          // still files one flag per day.
+          const what = [
+            flag.kind,
+            flag.concept_id ?? "",
+            flag.what_happened,
+            flag.suggested_fix ?? "",
+          ];
+          const rel = flagPath(client.id, what.join("\n"), a.idempotency_key, now());
           const w = await deps.sink.put(rel, yaml);
           const id =
             rel

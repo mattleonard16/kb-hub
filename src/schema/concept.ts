@@ -69,6 +69,11 @@ export const RepoName = z
 /** A git commit: 7 to 40 hex characters. */
 export const Commit = z.string().regex(/^[0-9a-f]{7,40}$/, "commit must be a git sha");
 
+/** A list of short lines. One string is accepted too (solutions docs often write one), as a list of one. */
+const Lines = z
+  .union([z.string().min(1), z.array(z.string().min(1))])
+  .transform((v) => (typeof v === "string" ? [v] : v));
+
 export const ConceptFrontmatter = z.looseObject({
   type: ConceptType,
   title: z.string().min(1).max(120),
@@ -88,8 +93,8 @@ export const ConceptFrontmatter = z.looseObject({
   /** The commit `resource` was read at. `kb stale --repo` flags the page once that path changes. */
   commit: Commit.optional(),
   // Lessons: when they apply and what the problem looks like, so a search for the symptom finds them.
-  applies_when: z.array(z.string().min(1)).optional(),
-  symptoms: z.array(z.string().min(1)).optional(),
+  applies_when: Lines.optional(),
+  symptoms: Lines.optional(),
 });
 export type ConceptFrontmatter = z.infer<typeof ConceptFrontmatter>;
 

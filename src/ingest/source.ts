@@ -31,6 +31,11 @@ export type SourceResult = {
   injection: string[];
 };
 
+/** A `kb scan` map starts with this frontmatter line. */
+export function isRepoScan(text: string): boolean {
+  return /^\uFEFF?---\r?\nkind:\s*["']?repo-scan/.test(text);
+}
+
 export function isSourceKind(v: string | undefined): v is SourceKind {
   return !!v && (SOURCE_KINDS as readonly string[]).includes(v);
 }
@@ -63,6 +68,10 @@ export async function addSource(
     throw new Error(
       `source is ${bytes} bytes; the limit is ${MAX_SOURCE_BYTES}. Split it or trim it.`,
     );
+  // Only `kb scan` writes repo scans. One queued by an agent could point the curator at made-up
+  // paths and commits, so it is refused.
+  if (opts.reportedBy && isRepoScan(text))
+    throw new Error("repo scans come only from kb scan; send this as a normal source");
   const secrets = findSecrets(text);
   if (secrets.length)
     throw new Error(

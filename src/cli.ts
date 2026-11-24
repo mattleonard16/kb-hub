@@ -11,6 +11,7 @@ import {
   syncTargets,
 } from "./compile/sync.ts";
 import { writeIndex } from "./compile/wiki-index.ts";
+import { coverage } from "./curator/coverage.ts";
 import { appendLog, type LogOp, listInbox, markProcessed, staleConcepts } from "./curator/inbox.ts";
 import { promote } from "./curator/promote.ts";
 import { parseRepoArgs, repoStale } from "./curator/repo-stale.ts";
@@ -61,6 +62,7 @@ Curate (used by the curator skill)
   log <op> --note "..."    Append a log entry (op: ingest, query, lint, promote)
   scan <repo-dir>          Queue a map of a code repo: folders, packages, agent docs, docs catalog
                            (--name <repo>, --exclude <path>, --depth N, --dry-run prints it)
+  coverage <repo>          Docs in the repo's latest scan that no page covers yet (--limit N)
   stale [--repo n=<dir>]   Pages past their stale_after date, and with --repo, pages whose
                            repo path changed since their commit
   promote <files...>       Mark concepts verified by you; drafts become stable (--by human:<login>)
@@ -218,6 +220,25 @@ export async function main(argv: string[]): Promise<number> {
         out,
         summary,
         `${r.created ? "Queued" : "Already queued"} a map of ${name}${scan.commit ? ` at ${scan.commit.slice(0, 7)}` : ""} (${scan.files} files, ${scan.packages.length} packages, ${scan.docs.length} docs) at ${r.path}.`,
+      );
+      return 0;
+    }
+
+    case "coverage": {
+      const repo = args[0];
+      if (!repo) throw new UsageError("Usage: kb coverage <repo> [--limit N]");
+      const r = await coverage(root, repo, (await loadKnowledge(root)).concepts);
+      const limit = Number(v.limit ?? 40);
+      print(
+        out,
+        r,
+        [
+          `${r.repo} at ${r.commit?.slice(0, 7) ?? "no commit"} (${r.scan}): ${r.covered} of ${r.total} docs covered, ${r.skipped} skipped (indexes, logs, plans).`,
+          ...r.uncovered.slice(0, limit).map((d) => `  ${d.path}  ${d.title}`),
+          r.uncovered.length > limit ? `  ...and ${r.uncovered.length - limit} more` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
       );
       return 0;
     }

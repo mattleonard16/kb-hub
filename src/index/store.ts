@@ -48,10 +48,10 @@ export class KnowledgeStore {
     this.db = new Database(":memory:");
     this.db.run(`CREATE TABLE concepts (
       id TEXT PRIMARY KEY, title TEXT, description TEXT, type TEXT, scope TEXT,
-      status TEXT, sensitivity TEXT, verified INTEGER, last_updated TEXT)`);
+      status TEXT, sensitivity TEXT, verified INTEGER, last_updated TEXT, resource TEXT)`);
     this.db.run(`CREATE VIRTUAL TABLE concepts_fts USING fts5(
       id UNINDEXED, title, description, body, tags, tokenize = 'porter unicode61')`);
-    const ins = this.db.prepare("INSERT INTO concepts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    const ins = this.db.prepare("INSERT INTO concepts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     const fts = this.db.prepare("INSERT INTO concepts_fts VALUES (?, ?, ?, ?, ?)");
     this.db.transaction(() => {
       for (const c of knowledge.concepts) {
@@ -67,6 +67,7 @@ export class KnowledgeStore {
           c.meta.sensitivity,
           verified,
           c.lastUpdated,
+          c.meta.repo && c.meta.resource ? c.meta.resource.replace(/^\.\/|\/+$/g, "") : null,
         );
         fts.run(
           c.id,
@@ -136,12 +137,27 @@ export class KnowledgeStore {
       where.push("c.type = $type");
       params.$type = f.type;
     }
+    // Pages that match more of the words come first, then BM25. Without this, a question's
+    // single most common word can outrank the one page that matches all of it.
+    const covers = terms.map((t, i) => {
+      params[`$t${i}`] = `"${t}"*`;
+      return `(c.id IN (SELECT id FROM concepts_fts WHERE concepts_fts MATCH $t${i}))`;
+    });
+    // A path asks "what is this code": the page whose resource is that path, or the closest folder
+    // above it, comes first.
+    const path = /^[\w.@[\]-]+(\/[\w.@[\]-]+)+\/?$/.test(query.trim())
+      ? query.trim().replace(/^\.\/|\/+$/g, "")
+      : null;
+    params.$path = path ?? "";
+    const pathRank = path
+      ? "CASE WHEN c.resource = $path OR $path LIKE c.resource || '/%' THEN length(c.resource) ELSE 0 END DESC, "
+      : "";
     const sql = `FROM concepts_fts JOIN concepts c ON c.id = concepts_fts.id WHERE ${where.join(" AND ")}`;
     const total = (this.db.query(`SELECT count(*) AS n ${sql}`).get(params) as { n: number }).n;
     const rows = this.db
       .query(
         `SELECT c.*, snippet(concepts_fts, 3, '', '', ' … ', 16) AS snippet ${sql}
-         ORDER BY bm25(concepts_fts, 0, 8.0, 3.0, 1.0, 2.0) - c.verified * 0.5
+         ORDER BY ${pathRank}(${covers.join(" + ")}) DESC, bm25(concepts_fts, 0, 8.0, 3.0, 1.0, 2.0) - c.verified * 0.5
          LIMIT $limit OFFSET $offset`,
       )
       .all({ ...params, $limit: limit, $offset: offset }) as Array<Record<string, unknown>>;
