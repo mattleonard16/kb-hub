@@ -139,9 +139,12 @@ export class KnowledgeStore {
     }
     // Pages that match more of the words come first, then BM25. Without this, a question's
     // single most common word can outrank the one page that matches all of it.
+    // A word in the title, description or tags counts half again: it says what the page is about,
+    // while a long hub page mentions almost every word somewhere in its body.
     const covers = terms.map((t, i) => {
       params[`$t${i}`] = `"${t}"*`;
-      return `(c.id IN (SELECT id FROM concepts_fts WHERE concepts_fts MATCH $t${i}))`;
+      params[`$m${i}`] = `{title description tags} : "${t}"*`;
+      return `(c.id IN (SELECT id FROM concepts_fts WHERE concepts_fts MATCH $t${i})) + 0.5 * (c.id IN (SELECT id FROM concepts_fts WHERE concepts_fts MATCH $m${i}))`;
     });
     // A path asks "what is this code": the page whose resource is that path, or the closest folder
     // above it, comes first.
@@ -157,7 +160,7 @@ export class KnowledgeStore {
     const rows = this.db
       .query(
         `SELECT c.*, snippet(concepts_fts, 3, '', '', ' … ', 16) AS snippet ${sql}
-         ORDER BY ${pathRank}(${covers.join(" + ")}) DESC, bm25(concepts_fts, 0, 8.0, 3.0, 1.0, 2.0) - c.verified * 0.5
+         ORDER BY ${pathRank}(${covers.join(" + ")} - 0.75 * (c.type = 'source')) DESC, bm25(concepts_fts, 0, 8.0, 3.0, 1.0, 2.0) - c.verified * 0.5
          LIMIT $limit OFFSET $offset`,
       )
       .all({ ...params, $limit: limit, $offset: offset }) as Array<Record<string, unknown>>;

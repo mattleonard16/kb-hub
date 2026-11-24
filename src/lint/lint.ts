@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { renderIndex } from "../compile/wiki-index.ts";
+import { EVAL_FILE, loadEval } from "../eval/search-eval.ts";
 import { loadKnowledge } from "../index/load.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { linkGraph, toId } from "../lib/links.ts";
@@ -300,6 +301,26 @@ async function wikiIssues(root: string): Promise<Issue[]> {
         });
       }
     }
+  }
+  try {
+    const cases = await loadEval(root);
+    const ids = new Set(k.concepts.map((c) => c.id));
+    for (const c of cases ?? [])
+      for (const id of typeof c.expect === "string" ? [c.expect] : c.expect)
+        if (!ids.has(id))
+          issues.push({
+            file: EVAL_FILE,
+            level: "error",
+            rule: "eval-target",
+            message: `"${c.q}" expects ${id}, which is not a page. Point it at the page that answers it now.`,
+          });
+  } catch (e) {
+    issues.push({
+      file: EVAL_FILE,
+      level: "error",
+      rule: "eval-format",
+      message: (e as Error).message,
+    });
   }
   const indexFile = join(root, "wiki/index.md");
   if ((await exists(indexFile)) && (await readFile(indexFile, "utf8")) !== renderIndex(k)) {

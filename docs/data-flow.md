@@ -44,6 +44,10 @@ Raw data, code layout, feature maps and existing knowledge bases all go through 
 
 A big repo takes several curator runs: each one files at most 25 pages per repo, and `kb coverage <repo>` lists the docs in the latest scan that no page covers yet, so the next run knows where to pick up. When a repo moves on, `kb stale --repo <repo>=<checkout>` lists the pages whose path changed since their `commit`, and the next curator run refreshes them. Search puts pages that match more of the question first, and a path (`apps/web/src/lib/ai`) finds the page whose `resource` is that path or the closest folder above it. `search_knowledge` filters by `type` and `scope`, so an agent can ask for one repo's features or only the owner's preferences. Lessons are found by their `symptoms`, and code pages by their path.
 
+## Is search still finding the right page?
+
+`evals/search.yaml` in the knowledge repo holds questions an agent would really ask, each with the page that should answer it. `kb eval` scores search on them (first, top 3, mean reciprocal rank), and the PR check fails below 80% in the top 3. The curator adds a question for every new page, and when one misses, it fixes the page so its first paragraph says plainly what it answers. `kb lint` fails when a question points at a page that no longer exists. Use `kb eval --hosted` to score only what the hosted server may serve.
+
 Rules the code enforces:
 
 - **`raw/` is write-once.** `kb inbox done` refuses to overwrite a raw file, and the knowledge repo's PR check fails if a PR changes or deletes one.
@@ -77,10 +81,12 @@ All of this runs locally; no hosting is needed. Each step ends with a check.
    - Then merge.
 5. **Browse it.** Open the repo in Obsidian.
    - Check: the graph view connects sources, projects and topics.
-6. **Ask questions.** Connect `kb serve` to Claude Code and ask something only your wiki knows.
+6. **Score search.** Add a few questions you would really ask to `evals/search.yaml` and run `kb eval`.
+   - Check: at least 80% of them find their page in the top 3.
+7. **Ask questions.** Connect `kb serve` to Claude Code and ask something only your wiki knows.
    - Check: the right page comes first, shows `verified: true`, and its backlinks lead to the source.
-7. **Feed it back.** Ask Claude Code to save a good answer (it calls `add_source` with kind `answer`), and to flag a gap.
+8. **Feed it back.** Ask Claude Code to save a good answer (it calls `add_source` with kind `answer`), and to flag a gap.
    - Check: both land in `inbox/`, and the next curator run files them.
-8. **Deliver.** Run `kb sync --dry-run`, then `kb sync`, then `kb paste chatgpt`.
+9. **Deliver.** Run `kb sync --dry-run`, then `kb sync`, then `kb paste chatgpt`.
    - Check: your own notes in `~/.claude/CLAUDE.md` are untouched.
    - Check: `kb status` shows Claude Code and Codex up to date.

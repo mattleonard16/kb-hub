@@ -1,0 +1,9 @@
+# Questions an agent would ask, and the page that should answer each.
+- q: how long should my replies be?
+  expect: profile/reply-length
+- q: which table has the ARR numbers?
+  expect: data-access/bigquery
+- q: can I use emoji in a message to Matt?
+  expect: profile/no-emoji
+- q: what does the peanut page say?
+  expect: health/allergy

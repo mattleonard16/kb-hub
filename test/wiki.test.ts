@@ -149,6 +149,20 @@ describe("index.md and lint", () => {
       "topics/app-assistant",
     );
     expect(store.search("src/lib", all).results[0]?.id).toBe("topics/app-web");
+    // A source summary that mentions everything ranks under the page about the thing itself.
+    await writeFile(
+      join(root, "wiki/sources/2026-11-23-everything.md"),
+      page(
+        "source",
+        "Meeting notes",
+        "Streams, assistant code, the chat route, request never closes.",
+        [],
+      ),
+    );
+    const store2 = new KnowledgeStore(await loadKnowledge(root));
+    expect(store2.search("request never closes", all).results[0]?.id).toBe("topics/stream-lesson");
+    // A word in the title outweighs the same word buried in a long body.
+    expect(store2.search("streams", all).results[0]?.id).toBe("topics/stream-lesson");
     // One symptom written as a string, the way many solutions docs do.
     expect(store.search("request never closes", all).results[0]?.id).toBe("topics/stream-lesson");
   });

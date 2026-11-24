@@ -1,0 +1,7 @@
+# Questions an agent would really ask, and the page that should answer each one.
+# `kb eval` scores search on them. The curator adds one for every new page, in an agent's words,
+# not the page title. `expect` can be a list when several pages answer it.
+#
+# - q: how long should my replies be?
+#   expect: profile/reply-length
+[]
