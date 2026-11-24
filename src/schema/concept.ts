@@ -92,6 +92,8 @@ export const ConceptFrontmatter = z.looseObject({
   repo: RepoName.optional(),
   /** The commit `resource` was read at. `kb stale --repo` flags the page once that path changes. */
   commit: Commit.optional(),
+  /** On a repo page: docs `kb coverage` should never list, as paths or globs (`docs/*-demo-*`). */
+  ignore: z.array(z.string().min(1)).optional(),
   // Lessons: when they apply and what the problem looks like, so a search for the symptom finds them.
   applies_when: Lines.optional(),
   symptoms: Lines.optional(),

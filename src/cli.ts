@@ -233,7 +233,7 @@ export async function main(argv: string[]): Promise<number> {
         out,
         r,
         [
-          `${r.repo} at ${r.commit?.slice(0, 7) ?? "no commit"} (${r.scan}): ${r.covered} of ${r.total} docs covered, ${r.skipped} skipped (indexes, logs, plans).`,
+          `${r.repo} at ${r.commit?.slice(0, 7) ?? "no commit"} (${r.scan}): ${r.covered} of ${r.total} docs covered, ${r.skipped} skipped (indexes, logs, plans, the repo page's ignore list).`,
           ...r.uncovered.slice(0, limit).map((d) => `  ${d.path}  ${d.title}`),
           r.uncovered.length > limit ? `  ...and ${r.uncovered.length - limit} more` : "",
         ]

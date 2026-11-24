@@ -12,7 +12,7 @@ const SKIP_TYPES = new Set(["index", "log", "audit"]);
 const SKIP_FOLDERS = /(^|\/)(plans|brainstorms|handoffs|todos|ideation)(\/|$)/;
 const SKIP_FILES = new Set(["README.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"]);
 
-export type CoverageDoc = { path: string; type: string; title: string };
+export type CoverageDoc = { path: string; type: string; title: string; code?: string };
 export type Coverage = {
   repo: string;
   scan: string;
@@ -73,7 +73,13 @@ export function scanDocs(text: string): CoverageDoc[] {
     if (row[0] === "Path") cols = row.map((c) => c.toLowerCase());
     else if (row[0]?.startsWith("`")) {
       const get = (name: string) => row[cols.indexOf(name)] ?? "";
-      out.push({ path: get("path").replace(/^`|`$/g, ""), type: get("type"), title: get("title") });
+      const code = get("code").replace(/^`|`$/g, "");
+      out.push({
+        path: get("path").replace(/^`|`$/g, ""),
+        type: get("type"),
+        title: get("title"),
+        ...(code ? { code } : {}),
+      });
     }
   }
   return out;
@@ -82,7 +88,10 @@ export function scanDocs(text: string): CoverageDoc[] {
 export async function coverage(
   root: string,
   repo: string,
-  pages: Array<{ body: string; meta: { repo?: string; resource?: string } }>,
+  pages: Array<{
+    body: string;
+    meta: { type: string; repo?: string; resource?: string; ignore?: string[] };
+  }>,
 ): Promise<Coverage> {
   const scan = await latestScan(root, repo);
   if (!scan) throw new Error(`no kb scan of "${repo}" in raw/. Run kb scan, then the curator.`);
@@ -90,14 +99,20 @@ export async function coverage(
   const resources = new Set(mine.map((p) => p.meta.resource).filter(Boolean));
   const text = mine.map((p) => p.body).join("\n");
   const all = scanDocs(scan.text);
+  // The repo page's `ignore` list: docs the owner never wants here, such as customer or prospect notes.
+  const ignore = mine.find((p) => p.meta.type === "repo")?.meta.ignore ?? [];
+  const ignored = (path: string) => ignore.some((g) => globToRegExp(g).test(path));
   const wanted = all.filter(
     (d) =>
+      !ignored(d.path) &&
       !SKIP_TYPES.has(d.type) &&
       !SKIP_FOLDERS.test(d.path) &&
       !SKIP_FILES.has(posix.basename(d.path)),
   );
   const isCovered = (d: CoverageDoc) => {
     if (resources.has(d.path) || text.includes(d.path)) return true;
+    // A page about the code a doc describes covers that doc.
+    if (d.code && resources.has(d.code)) return true;
     // A page about a generated bundle or a folder covers every doc in it.
     for (const r of resources) if (r && r !== "." && d.path.startsWith(`${r}/`)) return true;
     // ADRs are usually cited by number on the module or feature page they govern.
@@ -114,4 +129,17 @@ export async function coverage(
     skipped: all.length - wanted.length,
     uncovered,
   };
+}
+
+/** `docs/*-demo-*` style patterns: `*` stays inside one folder, `**` spans folders, and a bare
+ * folder matches everything under it. */
+export function globToRegExp(glob: string): RegExp {
+  const g = glob.replace(/^\.?\/+|\/+$/g, "");
+  const body = g
+    .split(/(\*\*|\*)/)
+    .map((part) =>
+      part === "**" ? ".*" : part === "*" ? "[^/]*" : part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"),
+    )
+    .join("");
+  return new RegExp(`^${body}(/.*)?$`);
 }

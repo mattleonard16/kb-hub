@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { cp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { main } from "../src/cli.ts";
-import { coverage, scanDocs } from "../src/curator/coverage.ts";
+import { coverage, globToRegExp, scanDocs } from "../src/curator/coverage.ts";
 import { parseRepoArgs, repoStale } from "../src/curator/repo-stale.ts";
 import { loadKnowledge } from "../src/index/load.ts";
 import { KnowledgeStore } from "../src/index/store.ts";
@@ -274,7 +274,10 @@ describe("kb coverage", () => {
     const text = await readFile(join(root, "raw/sources", queued), "utf8");
     expect(scanDocs(text).map((d) => d.path)).toContain("docs/adr/0001-default-model.md");
 
-    const page = (resource: string, body: string) => ({ body, meta: { repo: "sample", resource } });
+    const page = (resource: string, body: string) => ({
+      body,
+      meta: { type: "module", repo: "sample", resource },
+    });
     const before = await coverage(root, "sample", []);
     // README, CLAUDE.md and the OKF index are skipped; the rest are waiting.
     expect(before.uncovered.map((d) => d.path).sort()).toEqual([
@@ -286,9 +289,35 @@ describe("kb coverage", () => {
       page("apps/web/src/lib/ai", "Picks the default model (ADR 0001)."),
       page("docs/solutions/runtime-errors/stream-hang.md", "Move background work into after()."),
       page("docs/agent", "The agent bundle."),
-      { body: "docs/adr/0001-default-model.md", meta: { repo: "other", resource: "." } },
+      {
+        body: "docs/adr/0001-default-model.md",
+        meta: { type: "repo", repo: "other", resource: "." },
+      },
     ]);
     expect(after).toMatchObject({ repo: "sample", total: 3, covered: 3, uncovered: [] });
     expect(after.commit).toBe(git(dir, "rev-parse", "HEAD"));
+
+    // A page about the code a doc points at covers the doc; the repo page's ignore list drops docs.
+    const byCode = await coverage(root, "sample", [
+      page("apps/web/src/lib/ai/client.ts", "The model client."),
+      {
+        body: "",
+        meta: {
+          type: "repo",
+          repo: "sample",
+          resource: ".",
+          ignore: ["docs/solutions/**/*-hang.md"],
+        },
+      },
+    ]);
+    expect(byCode).toMatchObject({ total: 2, covered: 2, uncovered: [] });
+  });
+
+  test("ignore globs stay inside a folder unless they say **", () => {
+    expect(globToRegExp("docs/*-demo-*").test("docs/uva-demo-setup.md")).toBe(true);
+    expect(globToRegExp("docs/*-demo-*").test("docs/x/uva-demo-setup.md")).toBe(false);
+    expect(globToRegExp("docs/customers").test("docs/customers/acme.md")).toBe(true);
+    expect(globToRegExp("docs/**/acme.md").test("docs/a/b/acme.md")).toBe(true);
+    expect(globToRegExp("docs/a.md").test("docs/aXmd")).toBe(false);
   });
 });
