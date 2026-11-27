@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { withSessionModel } from "./harness-model.ts";
 import { detectIdentity, type Identity } from "./identity.ts";
 
 /** Everything a command needs from its surroundings, so tests can supply their own. */
@@ -20,7 +21,7 @@ export function defaultCtx(): Ctx {
     cwd: process.cwd(),
     home: env.BATON_HOME?.trim() || join(homedir(), ".baton"),
     env,
-    identity: detectIdentity(env),
+    identity: withSessionModel(detectIdentity(env), env),
     interactive: process.stdin.isTTY === true,
     now: () => new Date(),
   };

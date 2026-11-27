@@ -37,7 +37,7 @@ export const CLAUDE_ENV = {
   CLAUDE_CODE_SESSION_ID: "sess-claude-1",
   ANTHROPIC_MODEL: "claude-opus-5-5",
 };
-export const CODEX_ENV = { CODEX_THREAD_ID: "thread-codex-1", CODEX_MODEL: "gpt-5.5-codex" };
+export const CODEX_ENV = { CODEX_THREAD_ID: "thread-codex-1", CODEX_VERSION: "0.172.0" };
 
 export function sh(cwd: string, cmd: string[], env: Record<string, string> = cleanEnv()) {
   const p = Bun.spawnSync(cmd, { cwd, env, stdout: "pipe", stderr: "pipe" });

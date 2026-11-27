@@ -134,13 +134,6 @@ async function check(vendor: Vendor, outDir: string): Promise<Check[]> {
     { name: "output tokens", ok: has(run.output_tokens), value: String(run.output_tokens) },
     { name: "turns", ok: has(run.turns), value: String(run.turns) },
     { name: "tool events", ok: run.tool_events > 0, value: String(run.tool_events) },
-    {
-      name: "read set (events, else inferred)",
-      ok: run.reads.length + run.inferred_reads.length > 0,
-      value:
-        run.reads.join(", ") ||
-        (run.inferred_reads.length ? `inferred: ${run.inferred_reads.join(", ")}` : "none"),
-    },
     { name: "wall time (runner)", ok: true, value: `${run.wall_ms ?? wall} ms` },
   );
 
@@ -182,6 +175,22 @@ async function check(vendor: Vendor, outDir: string): Promise<Check[]> {
        WHERE r.session_id = ? ORDER BY w.source, w.path`,
     )
     .all(run.session_id ?? "");
+  const reads = db
+    .query<{ path: string; source: string }, [string]>(
+      `SELECT r.path, r.source FROM reads r JOIN runs u ON u.id = r.run_id
+       WHERE u.session_id = ? ORDER BY r.source, r.path`,
+    )
+    .all(run.session_id ?? "");
+  checks.push({
+    name: "read set finds note.txt",
+    ok: reads.some((r) => r.path.endsWith("note.txt")),
+    value: reads.map((r) => `${r.path} (${r.source})`).join(", ") || "none",
+  });
+  checks.push({
+    name: "trailer names the model",
+    ok: !/^Assisted-by: [^:\s]+:unknown$/m.test(trailers),
+    value: /^Assisted-by: .*$/m.exec(trailers)?.[0] ?? "no Assisted-by trailer",
+  });
   checks.push({
     name: "write set (events, shell or git)",
     ok: writes.some((w) => w.path.endsWith("hello.txt")),

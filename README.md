@@ -46,6 +46,18 @@ bun run m0            # sign in to claude and codex first; runs one tiny task wi
 
 It checks that headless JSON reports session, model, tokens, turns and tool events, and that the agent's own commit lands in the ledger under the same session. Raw outputs go to `m0-results/` (gitignored).
 
+## First real handoff (practice repo)
+
+```sh
+bun link                                  # once, in this repo: puts `baton` on your PATH for agents too
+bun run sandbox ~/code/baton-sandbox      # small practice repo with a two-part task, already `baton init`ed
+```
+
+1. In `~/code/baton-sandbox`, ask Claude Code: "Do parts 1 and 2 of TASK.md, commit, then write a handoff for part 3 with `baton handoff create`."
+2. Run `baton digest`, then `baton handoff edit h-1`: strike an approach with `~~...~~` or tighten an acceptance criterion, and save.
+3. Tell Codex: "Read .baton/handoffs/h-1.md and continue."
+4. Run `baton digest` again: the handoff card should show it was picked up by Codex, and the commits and test runs should carry both sessions.
+
 ## Where things live
 
 - `.baton/handoffs/` in each repo: packets and their revision history. **Gitignored by default.** Baton only serves packets it wrote on this machine, so a packet committed to git (say, in someone else's branch) is refused, whatever it claims.

@@ -20,7 +20,8 @@
     "deps:check": "bun scripts/check-deps.ts",
     "check": "bun scripts/check-bun.ts && bun run deps:check && bun run typecheck && bun run lint && bun run test",
     "m0": "bun scripts/check-bun.ts && bun scripts/m0-check.ts",
-    "build": "bun build src/cli.ts --compile --outfile dist/baton"
+    "build": "bun build src/cli.ts --compile --outfile dist/baton",
+    "sandbox": "bun scripts/check-bun.ts && bun scripts/sandbox.ts"
   },
   "dependencies": {
     "zod": "4.6.7"
