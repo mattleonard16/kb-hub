@@ -1,3 +1,4 @@
+import { inferReads, inferWrites } from "./shell.ts";
 import { ImportError, type ImportedRun, isObject, num, parseJsonOrLines, str } from "./types.ts";
 
 const READ_TOOLS = new Set(["Read", "NotebookRead"]);
@@ -15,6 +16,8 @@ export function parseClaude(text: string): ImportedRun {
 
   const reads = new Set<string>();
   const writes = new Set<string>();
+  const inferredReads = new Set<string>();
+  const inferredWrites = new Set<string>();
   let toolEvents = 0;
   let streamModel: string | null = null;
   for (const e of events) {
@@ -26,6 +29,14 @@ export function parseClaude(text: string): ImportedRun {
       toolEvents++;
       const name = str(block.name) ?? "";
       const input = isObject(block.input) ? block.input : {};
+      if (name === "Bash") {
+        const cmd = str(input.command);
+        if (cmd) {
+          for (const f of inferReads(cmd)) inferredReads.add(f);
+          for (const f of inferWrites(cmd)) inferredWrites.add(f);
+        }
+        continue;
+      }
       const path = str(input.file_path) ?? str(input.notebook_path);
       if (!path) continue;
       if (READ_TOOLS.has(name)) reads.add(path);
@@ -46,7 +57,8 @@ export function parseClaude(text: string): ImportedRun {
     cache_write_tokens: num(usage.cache_creation_input_tokens),
     wall_ms: num(result.duration_ms),
     reads: [...reads],
-    inferred_reads: [],
+    inferred_reads: [...inferredReads],
+    inferred_writes: [...inferredWrites],
     writes: [...writes],
     tool_events: toolEvents,
     is_error: typeof result.is_error === "boolean" ? result.is_error : null,

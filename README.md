@@ -15,7 +15,7 @@ Spec: the Baton MVP spec in the project files. This repo is at milestones M0 to 
 ## Quick start
 
 ```sh
-bun install
+bun install --frozen-lockfile        # needs Bun 1.4.4+; an older Bun fails here instead of rewriting bun.lock
 bun run check                        # deps allowlist, typecheck, lint, tests
 cd ~/code/your-repo
 bun ~/code/kb-hub/src/cli.ts init    # .baton/, .gitignore, git hooks, AGENTS.md/CLAUDE.md section
@@ -41,7 +41,7 @@ codex exec --json "..." > run.jsonl && baton import codex run.jsonl
 ## M0: check your own logins
 
 ```sh
-bun run m0            # runs one tiny task with each CLI found on PATH
+bun run m0            # sign in to claude and codex first; runs one tiny task with each CLI found on PATH
 ```
 
 It checks that headless JSON reports session, model, tokens, turns and tool events, and that the agent's own commit lands in the ledger under the same session. Raw outputs go to `m0-results/` (gitignored).

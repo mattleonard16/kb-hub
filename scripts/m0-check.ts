@@ -33,7 +33,12 @@ const PROMPT =
   "Read note.txt. Create hello.txt containing exactly the word in note.txt. Then run: git add hello.txt && git commit -m 'add hello'. Reply with done.";
 
 type Vendor = "claude" | "codex";
-const COMMANDS: Record<Vendor, string[]> = {
+/**
+ * How each CLI is run. Codex runs in its workspace-write sandbox; `.git` is added as a
+ * writable dir so the agent's commit (and Baton's hooks) can run. Checked against
+ * codex-cli 0.172.0, which removed `--full-auto`.
+ */
+const commands = (repo: string): Record<Vendor, string[]> => ({
   claude: [
     "claude",
     "-p",
@@ -44,8 +49,17 @@ const COMMANDS: Record<Vendor, string[]> = {
     "--allowedTools",
     "Read,Write,Bash(git add:*),Bash(git commit:*)",
   ],
-  codex: ["codex", "exec", "--json", "--full-auto", PROMPT],
-};
+  codex: [
+    "codex",
+    "exec",
+    "--json",
+    "--sandbox",
+    "workspace-write",
+    "--add-dir",
+    join(repo, ".git"),
+    PROMPT,
+  ],
+});
 
 /** The run's environment with this shell's own agent signals removed. */
 function cleanEnv(home: string): Record<string, string> {
@@ -82,7 +96,7 @@ async function check(vendor: Vendor, outDir: string): Promise<Check[]> {
 
   console.log(`\n${vendor}: running one short task in ${repo} ...`);
   const started = performance.now();
-  const proc = Bun.spawn(COMMANDS[vendor], {
+  const proc = Bun.spawn(commands(repo)[vendor], {
     cwd: repo,
     env: cleanEnv(home),
     stdout: "pipe",
@@ -121,14 +135,11 @@ async function check(vendor: Vendor, outDir: string): Promise<Check[]> {
     { name: "turns", ok: has(run.turns), value: String(run.turns) },
     { name: "tool events", ok: run.tool_events > 0, value: String(run.tool_events) },
     {
-      name: "read set from events",
-      ok: run.reads.length > 0,
-      value: run.reads.join(", ") || "none",
-    },
-    {
-      name: "write set from events",
-      ok: run.writes.length > 0,
-      value: run.writes.join(", ") || "none",
+      name: "read set (events, else inferred)",
+      ok: run.reads.length + run.inferred_reads.length > 0,
+      value:
+        run.reads.join(", ") ||
+        (run.inferred_reads.length ? `inferred: ${run.inferred_reads.join(", ")}` : "none"),
     },
     { name: "wall time (runner)", ok: true, value: `${run.wall_ms ?? wall} ms` },
   );
@@ -164,6 +175,17 @@ async function check(vendor: Vendor, outDir: string): Promise<Check[]> {
     value: linked
       ? `${linked.vendor} ${linked.session_id} model=${linked.model}`
       : "no linked commit",
+  });
+  const writes = db
+    .query<{ path: string; source: string }, [string]>(
+      `SELECT w.path, w.source FROM writes w JOIN runs r ON r.id = w.run_id
+       WHERE r.session_id = ? ORDER BY w.source, w.path`,
+    )
+    .all(run.session_id ?? "");
+  checks.push({
+    name: "write set (events, shell or git)",
+    ok: writes.some((w) => w.path.endsWith("hello.txt")),
+    value: writes.map((w) => `${w.path} (${w.source})`).join(", ") || "none",
   });
   db.close();
   return checks;

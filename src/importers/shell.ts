@@ -1,7 +1,8 @@
 /**
- * Infers which files a shell command read, for harnesses whose events carry commands but
- * not file reads (Codex). Only plain readers are understood; anything else yields nothing.
- * The result is recorded with source "inferred", never as an observed read.
+ * Infers which files a shell command read or wrote, for agents that touch files through a
+ * shell instead of a file tool (Codex always; Claude Code when it writes with `printf > f`).
+ * Only plain commands are understood; anything else yields nothing. Results are recorded
+ * with source "inferred", never as observed events.
  */
 const READERS = new Set(["cat", "head", "tail", "nl", "less", "more", "wc", "sed", "bat"]);
 /** Flags that take a value, so the next word is not a file. */
@@ -54,4 +55,33 @@ export function inferReads(cmd: string): string[] {
     }
   }
   return files;
+}
+
+const WRITERS_LAST_ARG = new Set(["cp", "mv", "install"]);
+const WRITERS_ALL_ARGS = new Set(["touch", "tee"]);
+const NOT_FILES = /^(\/dev\/(null|stdout|stderr|tty)|&\d)$/;
+
+export function inferWrites(cmd: string): string[] {
+  const files: string[] = [];
+  const add = (f: string | undefined) => {
+    if (f && !NOT_FILES.test(f) && !f.startsWith("-")) files.push(f);
+  };
+  for (const part of unwrap(cmd).split(/&&|\|\||;|\|/)) {
+    const w = words(part.trim());
+    for (let i = 0; i < w.length; i++) {
+      const t = w[i] ?? "";
+      const redirect = /^\d*>>?(.*)$/.exec(t);
+      if (redirect && !t.startsWith(">&")) {
+        add(redirect[1] ? redirect[1] : w[++i]);
+      }
+    }
+    const bin = w[0]?.split("/").pop();
+    if (!bin) continue;
+    const args = w.slice(1).filter((a) => !/^\d*[<>]/.test(a));
+    if (WRITERS_LAST_ARG.has(bin) && args.length >= 2) add(args[args.length - 1]);
+    if (WRITERS_ALL_ARGS.has(bin)) for (const a of args) add(a);
+    if (bin === "sed" && args.some((a) => a === "-i" || a.startsWith("-i")))
+      add(args[args.length - 1]);
+  }
+  return [...new Set(files)];
 }

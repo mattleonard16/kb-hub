@@ -61,6 +61,7 @@ export function importRun(
       ["reads", run.reads, "json-events"],
       ["reads", run.inferred_reads, "inferred"],
       ["writes", run.writes, "json-events"],
+      ["writes", run.inferred_writes, "inferred"],
     ] as const) {
       const insert = db.query(
         `INSERT OR IGNORE INTO ${table} (run_id, repo, path, content_hash, source)

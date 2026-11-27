@@ -7,7 +7,7 @@ import { runTest } from "../src/commands/test.ts";
 import { accept, prepareHandoff } from "../src/desk/actions.ts";
 import { type Card, digest } from "../src/desk/digest.ts";
 import { recordCommit } from "../src/hooks/commit.ts";
-import { inferReads } from "../src/importers/shell-reads.ts";
+import { inferReads } from "../src/importers/shell.ts";
 import { sanitize } from "../src/lib/sanitize.ts";
 import { loadPacket, packetPath } from "../src/packet/store.ts";
 import { CLAUDE_ENV, ctxFor, fixture, memLedger, sh, tempRepo } from "./helpers.ts";

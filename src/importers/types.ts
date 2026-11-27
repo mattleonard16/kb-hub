@@ -17,6 +17,8 @@ export type ImportedRun = {
   /** Reads guessed from shell commands (cat, sed -n, head...), stored with source "inferred". */
   inferred_reads: string[];
   writes: string[];
+  /** Writes guessed from shell commands (`> file`, tee, cp, sed -i), source "inferred". */
+  inferred_writes: string[];
   /** Number of tool events seen, so M0 can tell "no tools used" from "no tool events". */
   tool_events: number;
   is_error: boolean | null;
