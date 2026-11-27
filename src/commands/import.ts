@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { isAbsolute, relative } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { parseClaude } from "../importers/claude.ts";
 import { parseCodex } from "../importers/codex.ts";
 import type { ImportedRun } from "../importers/types.ts";
@@ -68,16 +68,48 @@ export function importRun(
          VALUES ($run, $repo, $path, NULL, $source)`,
       );
       for (const p of paths) {
-        insert.run({ run: row.id, repo: root, path: toRepoPath(root, p), source });
+        const path = toRepoPath(root, p);
+        if (source === "inferred" && !insideRepo(path)) continue;
+        insert.run({ run: row.id, repo: root, path, source });
       }
     }
   })();
-  const text_ = `baton: imported ${run.vendor} session ${run.session_id} (model ${run.model ?? "unknown"}, ${run.turns ?? "?"} turns, ${run.reads.length} reads, ${run.writes.length} writes) as run ${row.id}`;
+  const count = (table: "reads" | "writes") =>
+    db
+      .query<{ n: number }, { run: number }>(
+        `SELECT COUNT(*) AS n FROM ${table} WHERE run_id = $run`,
+      )
+      .get({ run: row.id })?.n ?? 0;
+  const text_ = `baton: imported ${run.vendor} session ${run.session_id} (model ${run.model ?? "unknown"}, ${run.turns ?? "?"} turns, ${count("reads")} reads, ${count("writes")} writes, including inferred) as run ${row.id}`;
   return { code: 0, data: { run_id: row.id, ...run }, text: text_ };
 }
 
+/**
+ * An inferred path outside the repo is the harness's own business (Codex reading its skill
+ * files under ~/.codex, say), not part of the task, so it is not recorded.
+ */
+function insideRepo(path: string): boolean {
+  return !isAbsolute(path) && !path.startsWith("~") && !path.startsWith("..");
+}
+
+/** Repo-relative when the path is inside the repo, resolving symlinks (macOS /var -> /private/var). */
 function toRepoPath(root: string, path: string): string {
   if (!isAbsolute(path)) return path;
-  const rel = relative(root, path);
-  return rel.startsWith("..") ? path : rel;
+  for (const candidate of [path, real(path)]) {
+    const rel = relative(root, candidate);
+    if (!rel.startsWith("..") && !isAbsolute(rel)) return rel;
+  }
+  return path;
+}
+
+function real(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    try {
+      return join(realpathSync(dirname(path)), basename(path));
+    } catch {
+      return path;
+    }
+  }
 }

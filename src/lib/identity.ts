@@ -29,13 +29,15 @@ export function detectIdentity(env: Env = process.env): Identity {
       agent: true,
     };
   }
+  // Names confirmed in codex-cli 0.172.0 sessions: CODEX_THREAD_ID (= CODEX_SESSION_ID),
+  // CODEX_VERSION and CODEX_SANDBOX. The model is not in the env; see harness-model.ts.
   const codexSession = nonEmpty(env.CODEX_THREAD_ID) ?? nonEmpty(env.CODEX_SESSION_ID);
-  if (codexSession || nonEmpty(env.CODEX_SANDBOX) || nonEmpty(env.CODEX_MANAGED_BY_NPM)) {
+  if (codexSession || nonEmpty(env.CODEX_SANDBOX)) {
     return {
       vendor: "codex",
-      model: nonEmpty(env.CODEX_MODEL) ?? UNKNOWN,
+      model: UNKNOWN,
       session_id: codexSession ?? UNKNOWN,
-      cli_version: null,
+      cli_version: nonEmpty(env.CODEX_VERSION) ?? null,
       agent: true,
     };
   }

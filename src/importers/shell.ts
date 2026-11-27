@@ -31,17 +31,42 @@ function unwrap(cmd: string): string {
   return cmd;
 }
 
+/** Pulls `$(...)` and backtick substitutions out of a command: [outer, ...inner commands]. */
+function substitutions(cmd: string): { outer: string; inner: string[] } {
+  const inner: string[] = [];
+  let outer = cmd;
+  for (let pass = 0; pass < 4; pass++) {
+    const next = outer.replace(
+      /\$\(([^()]*)\)|`([^`]*)`/g,
+      (_, a: string | undefined, b: string | undefined) => {
+        inner.push(a ?? b ?? "");
+        return "SUBST";
+      },
+    );
+    if (next === outer) break;
+    outer = next;
+  }
+  return { outer, inner };
+}
+
 export function inferReads(cmd: string): string[] {
-  const files: string[] = [];
-  for (const part of unwrap(cmd).split(/&&|\|\||;|\|/)) {
-    if (part.includes("<<")) continue;
+  const { outer, inner } = substitutions(unwrap(cmd));
+  const files: string[] = inner.flatMap(inferReads);
+  for (const part of outer.split(/&&|\|\||;|\|/)) {
     const w = words(part.trim());
+    for (let i = 0; i < w.length; i++) {
+      const t = w[i] ?? "";
+      if (t.startsWith("<<")) continue;
+      const input = /^\d*<(?!<)(.*)$/.exec(t);
+      if (input) files.push((input[1] ? input[1] : w[++i]) ?? "");
+    }
+    if (part.includes("<<")) continue;
     const bin = w[0]?.split("/").pop();
     if (!bin || !READERS.has(bin)) continue;
     const args = w.slice(1);
     if (bin === "sed") {
       const last = args[args.length - 1];
-      if (args.length >= 2 && last && !last.startsWith("-")) files.push(last);
+      if (args.length >= 2 && last && !last.startsWith("-") && !/[<>]/.test(last)) files.push(last);
       continue;
     }
     for (let i = 0; i < args.length; i++) {
@@ -54,7 +79,7 @@ export function inferReads(cmd: string): string[] {
       files.push(a);
     }
   }
-  return files;
+  return [...new Set(files.filter((f) => f && f !== "SUBST" && !/^\/dev\//.test(f)))];
 }
 
 const WRITERS_LAST_ARG = new Set(["cp", "mv", "install"]);
@@ -66,7 +91,9 @@ export function inferWrites(cmd: string): string[] {
   const add = (f: string | undefined) => {
     if (f && !NOT_FILES.test(f) && !f.startsWith("-")) files.push(f);
   };
-  for (const part of unwrap(cmd).split(/&&|\|\||;|\|/)) {
+  const { outer, inner } = substitutions(unwrap(cmd));
+  for (const f of inner.flatMap(inferWrites)) add(f);
+  for (const part of outer.split(/&&|\|\||;|\|/)) {
     const w = words(part.trim());
     for (let i = 0; i < w.length; i++) {
       const t = w[i] ?? "";

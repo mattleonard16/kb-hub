@@ -1,0 +1,8 @@
+{
+  "name": "baton-sandbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  }
+}
