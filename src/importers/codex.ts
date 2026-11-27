@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { inferReads } from "./shell-reads.ts";
+import { inferReads, inferWrites } from "./shell.ts";
 import { ImportError, type ImportedRun, isObject, num, parseJsonOrLines, str } from "./types.ts";
 
 /**
@@ -28,6 +28,7 @@ export function parseCodex(
   let isError = false;
   const writes = new Set<string>();
   const inferred = new Set<string>();
+  const inferredWrites = new Set<string>();
 
   for (const e of events) {
     model ??= str(e.model);
@@ -53,7 +54,10 @@ export function parseCodex(
       }
       if (item.type === "command_execution") {
         const cmd = str(item.command);
-        if (cmd) for (const f of inferReads(cmd)) inferred.add(f);
+        if (cmd) {
+          for (const f of inferReads(cmd)) inferred.add(f);
+          for (const f of inferWrites(cmd)) inferredWrites.add(f);
+        }
       }
       if (item.type === "file_change" && Array.isArray(item.changes)) {
         for (const c of item.changes) {
@@ -79,6 +83,7 @@ export function parseCodex(
     wall_ms: null,
     reads: [],
     inferred_reads: [...inferred],
+    inferred_writes: [...inferredWrites],
     writes: [...writes],
     tool_events: toolEvents,
     is_error: isError,
