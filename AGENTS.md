@@ -1,49 +1,47 @@
-# kb-hub
+# Baton
 
-Personal knowledge hub. It ingests what your AI assistants know (Claude Code, Codex, ChatGPT, Gemini, Claude, Muse, Instinct, Dots, Duet), lets a curator agent turn that into one reviewed Git repo of Markdown, and serves it back to every assistant over MCP and generated files.
-
-This repo is the **code**. The **data** lives in a separate private repo, `knowledge`, pointed to by `KB_KNOWLEDGE_DIR`.
+A neutral desk and scorekeeper for coding agents from different vendors: handoff packets, redlines and an outcome ledger. It never dispatches, runs or controls agents.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
 | `bun install` | Install (CI uses `bun install --frozen-lockfile`) |
-| `bun run check` | Dependency allowlist, typecheck, lint, tests. **Run before finishing any change.** About 3 seconds. |
+| `bun run check` | Dependency allowlist, typecheck, lint, tests. **Run before finishing any change.** |
 | `bun test` | Tests only |
-| `bun run kb <command>` | Run the CLI from source (`bun run kb help`) |
-| `bun run build` | Single binary at `dist/kb` |
+| `bun run baton <command>` | Run the CLI from source (`bun run baton help`) |
+| `bun run m0` | M0 check: runs one tiny task with `claude -p` and `codex exec` on your login |
+| `bun run build` | Single binary at `dist/baton` |
 
-Every CLI command takes `--json` for machine-readable output. Exit codes: 0 ok, 1 validation failed, 2 usage error.
+Every CLI command takes `--json`. Exit codes: 0 ok, 1 validation failed (including a failing `baton test`), 2 usage error.
 
 ## Module map
 
 | Path | Job |
 | --- | --- |
-| `src/schema/` | zod schemas: concept frontmatter, extraction export, flag. The single definition of "valid". |
-| `src/lib/` | Small shared helpers: frontmatter parsing (`Bun.YAML`), secret detection |
-| `src/lint/` | `kb lint`: validates a knowledge repo |
-| `src/ingest/` | `kb ingest`: parse pasted extraction replies and export ZIPs into `inbox/` |
-| `src/index/` | Loads a knowledge repo and builds an in-memory `bun:sqlite` FTS5 index (rebuilt on start and on reload) |
-| `src/mcp/` | MCP server (`server.ts`), policy (scopes, rate limits, lockdown, audit), stdio, HTTP + OAuth (`http.ts`, `oauth.ts`), knowledge snapshot from a GitHub zipball (`snapshot.ts`) |
-| `src/compile/` | `kb compile`, `kb sync`, `kb paste`, `kb status`: CLAUDE.md and AGENTS.md sections, skills, paste blocks |
-| `src/curator/` | `SKILL.md` (the curator, run as a scheduled Claude task) and helpers: `kb inbox`, `kb stale`, `kb promote` |
-| `templates/knowledge/` | What `kb init` creates: the private knowledge repo, with its AGENTS.md, workflow and usage skill |
-| `Dockerfile`, `fly.toml` | Hosted server (any container host). See `docs/deploy.md` |
-| `docs/` | `setup.md` (local) and `deploy.md` (hosted) |
-| `prompts/extract/` | Versioned extraction prompts, one base plus one tail per tool |
-| `test/fixtures/` | Real-shaped inputs. Prefer adding a fixture over mocking. |
+| `src/cli.ts` | Argument parsing and dispatch (`run()` is what tests drive) |
+| `src/lib/` | Context (cwd, ledger home, env, identity, clock), git helpers, identity from harness env, sanitize, secrets |
+| `src/ledger/` | `bun:sqlite` schema (append-only migrations) and run upsert keyed on (vendor, session) |
+| `src/hooks/` | prepare-commit-msg trailers, post-commit recording, hook install |
+| `src/importers/` | `claude -p` json/stream-json and `codex exec --json` parsers |
+| `src/packet/` | Packet schema (zod), file format, line diff, `~~strike~~` extraction, store with revisions |
+| `src/desk/` | `baton digest` cards; accept and prepare actions |
+| `src/commands/` | init, test, import, handoff, lint, status |
+| `scripts/` | Dependency allowlist, M0 check |
+| `test/fixtures/` | Real `claude -p` output (trimmed) and a hand-written Codex sample |
 
 ## Rules
 
-- **Bun only.** Use built-ins before adding a package: `bun:sqlite`, `Bun.YAML`, `Bun.serve`, `bun test`, `util.parseArgs`, `fetch`.
-- **Dependency budget.** Allowed packages are listed in `scripts/check-deps.ts`. Adding one needs a one-line reason there and explicit approval in the PR. Pin exact versions.
-- **Never write to a knowledge repo's `knowledge/` or `skills/` from code paths agents can call.** Agents write only to `inbox/`. Only the curator, through a pull request, changes knowledge.
-- **Never commit secrets.** `src/lib/secrets.ts` and gitleaks in CI catch the common ones.
-- **Tool descriptions are static.** MCP tool names and descriptions live in code and are never generated from knowledge content.
-- **`reported_by` comes from the authenticated client**, never from tool input.
-- Strict TypeScript; no `any`. Biome formats TS and JSON only (not Markdown, it rewrites frontmatter).
-- Keep modules small with one job. Add tests next to the behavior you change.
+- **Never dispatch.** No code path starts, messages or steers an agent. "Prepare" writes files and prints an instruction for the person.
+- **Identity comes from harness signals** (env vars set by Claude Code or Codex, headless JSON, Codex rollout files). Never add a flag or field that lets an agent type its vendor, model or session.
+- **`baton accept` is the person's verdict.** It refuses to run when a harness signal says an agent is running it.
+- **Sanitize before writing** test output and evidence: `src/lib/sanitize.ts` (drop `KEY=VALUE` lines, redact secrets, truncate).
+- **Packets are local-only by default** (`.baton/handoffs/` is gitignored by `baton init`).
+- **The ledger holds paths, hashes and counts**, never file contents or prompts.
+- Hooks never block a commit.
+- **Bun only**, dependency budget in `scripts/check-deps.ts`. Pin exact versions. Strict TypeScript, no `any`. Biome formats TS and JSON only.
+- No network listener and no model API calls in M0 to M5. OTLP and MCP are an optional M6, after the eval.
+- Prefer a real fixture over a mock. Add tests next to the behavior you change.
 
 ## Pinned versions
 

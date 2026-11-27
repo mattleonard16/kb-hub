@@ -7,6 +7,7 @@ export const HOOK_MARKER = "# managed by baton";
 /** The command a hook uses to reach Baton: this checkout's CLI, run with the current bun. */
 export function defaultBatonCommand(): string {
   const cli = new URL("../cli.ts", import.meta.url).pathname;
+  if (cli.startsWith("/$bunfs/")) return shellQuote(process.execPath);
   return `${shellQuote(process.execPath)} ${shellQuote(cli)}`;
 }
 
