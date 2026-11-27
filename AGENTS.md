@@ -34,7 +34,9 @@ Every CLI command takes `--json`. Exit codes: 0 ok, 1 validation failed (includi
 
 - **Never dispatch.** No code path starts, messages or steers an agent. "Prepare" writes files and prints an instruction for the person.
 - **Identity comes from harness signals** (env vars set by Claude Code or Codex, headless JSON, Codex rollout files). Never add a flag or field that lets an agent type its vendor, model or session.
-- **`baton accept` is the person's verdict.** It refuses to run when a harness signal says an agent is running it.
+- **`baton accept` is the person's verdict.** It runs only with no harness signal and a terminal attached. A session with no signal and no terminal is recorded as `unknown`, never as the person.
+- **Only packets Baton wrote on this machine are handoffs.** A packet tracked by git, or one with no ledger record, is refused by read, edit and lint, and shows on the desk only as an ignored warning.
+- **Typed trailers are not identity.** A `Baton-Session` trailer only links a commit to a run Baton already saw from a harness signal.
 - **Sanitize before writing** test output and evidence: `src/lib/sanitize.ts` (drop `KEY=VALUE` lines, redact secrets, truncate).
 - **Packets are local-only by default** (`.baton/handoffs/` is gitignored by `baton init`).
 - **The ledger holds paths, hashes and counts**, never file contents or prompts.

@@ -105,6 +105,7 @@ async function check(vendor: Vendor, outDir: string): Promise<Check[]> {
       home,
       env: process.env,
       identity: detectIdentity({}),
+      interactive: false,
       now: () => new Date(),
     });
   } catch (err) {

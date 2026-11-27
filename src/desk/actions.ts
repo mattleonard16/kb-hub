@@ -4,7 +4,7 @@ import type { CreateFlags } from "../commands/handoff.ts";
 import { requireRoot } from "../commands/root.ts";
 import type { TestRow } from "../commands/test.ts";
 import { getRun, type Ledger, runLabel } from "../ledger/db.ts";
-import { type Ctx, invalid, type Outcome, ok, UsageError } from "../lib/context.ts";
+import { type Ctx, invalid, isPerson, type Outcome, ok, UsageError } from "../lib/context.ts";
 import { git, tryGit } from "../lib/git.ts";
 import { sanitize } from "../lib/sanitize.ts";
 import { formatPacket } from "../packet/format.ts";
@@ -21,10 +21,10 @@ export function accept(
   opts: { reject?: boolean; note?: string | undefined } = {},
 ): Outcome {
   if (!card) throw new UsageError("usage: baton accept <card> [--reject] [--note text]");
-  if (ctx.identity.agent) {
+  if (!isPerson(ctx)) {
     return invalid(
-      { ok: false, reason: "agent-session" },
-      "baton: accept records the person's verdict, so it can't run inside an agent session. Run it in your own terminal.",
+      { ok: false, reason: ctx.identity.agent ? "agent-session" : "no-terminal" },
+      "baton: accept records the person's verdict, so it only runs in your own terminal, not inside an agent session or a script.",
     );
   }
   const root = requireRoot(ctx);

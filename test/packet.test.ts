@@ -75,13 +75,13 @@ describe("lint", () => {
   test("flags TODO placeholders and a broken file", () => {
     const { repo, db, agent } = setup();
     handoffCreate(agent, db, FIELDS);
-    expect(lint(agent, []).code).toBe(0);
+    expect(lint(agent, db, []).code).toBe(0);
     const path = packetPath(repo, "h-1");
     writeFileSync(
       path,
       readFileSync(path, "utf8").replace("next_step: add a redis cache", "next_step: TODO fill"),
     );
-    const out = lint(agent, ["h-1"]);
+    const out = lint(agent, db, ["h-1"]);
     expect(out.code).toBe(1);
     expect(out.text).toContain("next_step: still a TODO placeholder");
   });

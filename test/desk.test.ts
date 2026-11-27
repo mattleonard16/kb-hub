@@ -99,7 +99,7 @@ describe("prepare", () => {
     expect(text).toContain("vendor: claude-code");
     expect(text).toContain("verify_cmd:");
     expect(text).toContain("1 passed, 1 failed");
-    expect(lint(person, ["h-1"]).code).toBe(1);
+    expect(lint(person, db, ["h-1"]).code).toBe(1);
   });
 
   test("review suggests a reviewer from the other vendor and states the evidence rule", async () => {

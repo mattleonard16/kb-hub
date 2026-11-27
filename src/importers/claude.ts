@@ -46,6 +46,7 @@ export function parseClaude(text: string): ImportedRun {
     cache_write_tokens: num(usage.cache_creation_input_tokens),
     wall_ms: num(result.duration_ms),
     reads: [...reads],
+    inferred_reads: [],
     writes: [...writes],
     tool_events: toolEvents,
     is_error: typeof result.is_error === "boolean" ? result.is_error : null,

@@ -14,6 +14,8 @@ export type ImportedRun = {
   wall_ms: number | null;
   /** Absolute or repo-relative paths, as the tool events name them. */
   reads: string[];
+  /** Reads guessed from shell commands (cat, sed -n, head...), stored with source "inferred". */
+  inferred_reads: string[];
   writes: string[];
   /** Number of tool events seen, so M0 can tell "no tools used" from "no tool events". */
   tool_events: number;

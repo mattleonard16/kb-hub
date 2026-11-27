@@ -163,6 +163,7 @@ async function dispatch(
     case "lint":
       return lint(
         ctx,
+        ledger(),
         [sub, ...rest].filter((x): x is string => !!x),
       );
     case "test":

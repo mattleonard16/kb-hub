@@ -2,9 +2,10 @@ import { requireRoot } from "../commands/root.ts";
 import type { TestRow } from "../commands/test.ts";
 import { getRun, type Ledger, type RunRow, runLabel } from "../ledger/db.ts";
 import type { Ctx, Outcome } from "../lib/context.ts";
-import { listIds, loadPacket, syncOutsideEdits } from "../packet/store.ts";
+import { listIds, loadPacket, syncOutsideEdits, untrustedReason } from "../packet/store.ts";
 
 export type Card =
+  | { kind: "untrusted-packet"; card: string; reason: string; actions: string[] }
   | {
       kind: "commit";
       card: string;
@@ -150,6 +151,11 @@ export function buildCards(ctx: Ctx, db: Ledger, root: string, limit = 10): Card
       )
       .get({ repo: root, id });
     if (accepted && accepted.n > 0) continue;
+    const untrusted = untrustedReason(db, root, id);
+    if (untrusted) {
+      cards.push({ kind: "untrusted-packet", card: id, reason: untrusted, actions: [] });
+      continue;
+    }
     syncOutsideEdits(ctx, db, root, id);
     const p = loadPacket(root, id);
     const d = p?.data ?? {};
@@ -189,6 +195,8 @@ function render(card: Card): string {
       return `✗ FAILING  ${card.card}  ${card.cmd}\n    ${card.failed} failed at ${short(card.commit)} by ${card.by}; last passed at ${short(card.last_passing)}${act}`;
     case "commit":
       return `● COMMIT   ${card.card}  ${card.subject}\n    by ${card.by}, ${card.files} files, tests ${card.tests}${act}`;
+    case "untrusted-packet":
+      return `⚠ IGNORED  ${card.card}  ${card.reason}`;
     case "claim":
       return `◆ CLAIM    ${card.card}  ${card.paths}\n    held by ${card.by}, ${card.minutes_left} min left`;
     case "handoff": {

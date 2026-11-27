@@ -63,20 +63,15 @@ export function recordCommit(ctx: Ctx, db: Ledger, sha?: string): Outcome {
   if (ctx.identity.agent) {
     runId = ensureRun(db, ctx.identity, "env", ctx.now()).id;
   } else if (fromTrailer) {
-    const { vendor, session } = fromTrailer;
-    const run = ensureRun(
-      db,
-      {
-        vendor: vendor === "claude-code" || vendor === "codex" ? vendor : "unknown",
-        model: modelFromTrailers(trailers) ?? "unknown",
-        session_id: session,
-        cli_version: null,
-        agent: true,
-      },
-      "trailer",
-      ctx.now(),
-    );
-    runId = run.id;
+    // A trailer is text anyone can type into a commit message, so it only links the commit
+    // to a run Baton already saw from a harness signal (env or headless JSON), never makes one.
+    const known = db
+      .query<{ id: number }, { vendor: string; session: string }>(
+        `SELECT id FROM runs WHERE vendor = $vendor AND session_id = $session
+         AND identity_source IN ('env', 'headless-json')`,
+      )
+      .get({ vendor: fromTrailer.vendor, session: fromTrailer.session });
+    runId = known?.id ?? null;
   }
   const files = filesInCommit(root, full);
   db.transaction(() => {

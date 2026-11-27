@@ -48,7 +48,7 @@ It checks that headless JSON reports session, model, tokens, turns and tool even
 
 ## Where things live
 
-- `.baton/handoffs/` in each repo: packets and their revision history. **Gitignored by default**, so a packet committed in someone else's branch is never read as one.
+- `.baton/handoffs/` in each repo: packets and their revision history. **Gitignored by default.** Baton only serves packets it wrote on this machine, so a packet committed to git (say, in someone else's branch) is refused, whatever it claims.
 - `~/.baton/ledger.sqlite` (or `$BATON_HOME`): the personal ledger. Paths, hashes, counts and short sanitized test notes. Never file contents or prompts.
 
 See [AGENTS.md](AGENTS.md) for the module map and rules.

@@ -57,15 +57,18 @@ export function importRun(
       now: now.toISOString(),
       id: row.id,
     });
-    for (const [table, paths] of [
-      ["reads", run.reads],
-      ["writes", run.writes],
+    for (const [table, paths, source] of [
+      ["reads", run.reads, "json-events"],
+      ["reads", run.inferred_reads, "inferred"],
+      ["writes", run.writes, "json-events"],
     ] as const) {
       const insert = db.query(
         `INSERT OR IGNORE INTO ${table} (run_id, repo, path, content_hash, source)
-         VALUES ($run, $repo, $path, NULL, 'json-events')`,
+         VALUES ($run, $repo, $path, NULL, $source)`,
       );
-      for (const p of paths) insert.run({ run: row.id, repo: root, path: toRepoPath(root, p) });
+      for (const p of paths) {
+        insert.run({ run: row.id, repo: root, path: toRepoPath(root, p), source });
+      }
     }
   })();
   const text_ = `baton: imported ${run.vendor} session ${run.session_id} (model ${run.model ?? "unknown"}, ${run.turns ?? "?"} turns, ${run.reads.length} reads, ${run.writes.length} writes) as run ${row.id}`;

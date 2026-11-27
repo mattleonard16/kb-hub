@@ -17,7 +17,7 @@ const deadEnd = z.union([
   z.object({
     approach: text,
     reason: z.string().optional(),
-    by: z.enum(["agent", "person"]).default("agent"),
+    by: z.enum(["agent", "person", "unknown"]).default("agent"),
   }),
 ]);
 

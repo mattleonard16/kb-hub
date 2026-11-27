@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { ensureRun, type Ledger } from "../ledger/db.ts";
 import { type Ctx, type Outcome, UsageError } from "../lib/context.ts";
 import { dirtyFiles, git, headCommit } from "../lib/git.ts";
-import { sanitize, tailBytes } from "../lib/sanitize.ts";
+import { DEFAULT_LIMIT_BYTES, sanitize, tailBytes } from "../lib/sanitize.ts";
 import { requireRoot } from "./root.ts";
 
 export type TestCounts = { passed: number; failed: number };
@@ -114,7 +114,7 @@ export async function runTest(
       passed: counts.passed,
       failed: counts.failed,
       suite: suiteHash(root, cmd),
-      tail: sanitize(tailBytes(output, 8192)),
+      tail: sanitize(tailBytes(output, 65536), DEFAULT_LIMIT_BYTES, "tail"),
       ms: duration,
       now: ctx.now().toISOString(),
     });

@@ -56,14 +56,20 @@ export function tempRepo(): string {
   return dir;
 }
 
-export function ctxFor(cwd: string, extraEnv: Record<string, string> = {}, home = ":memory:"): Ctx {
+/** A context; with no agent env and `interactive` true (the default) it is the person. */
+export function ctxFor(
+  cwd: string,
+  extraEnv: Record<string, string> = {},
+  home = ":memory:",
+  interactive = true,
+): Ctx {
   const env = cleanEnv(extraEnv);
   let t = Date.parse("2026-11-27T12:00:00Z");
   const now = () => {
     t += 1000;
     return new Date(t);
   };
-  return { cwd, home, env, identity: detectIdentity(env), now };
+  return { cwd, home, env, identity: detectIdentity(env), interactive, now };
 }
 
 export function memLedger(): Ledger {

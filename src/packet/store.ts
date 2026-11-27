@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { ensureRun, type Ledger, type RunRow } from "../ledger/db.ts";
-import type { Ctx } from "../lib/context.ts";
-import { dirtyFiles, headCommit } from "../lib/git.ts";
+import { authorOf, type Ctx } from "../lib/context.ts";
+import { dirtyFiles, headCommit, tryGit } from "../lib/git.ts";
 import { sanitize } from "../lib/sanitize.ts";
 import { changedLines } from "./diff.ts";
 import {
@@ -36,6 +36,25 @@ function nextId(root: string): string {
   const ids = listIds(root);
   const last = ids.length ? Number(ids[ids.length - 1]?.slice(2)) : 0;
   return `h-${last + 1}`;
+}
+
+/**
+ * Why a packet file must not be treated as a handoff, or null if it may. Packets are
+ * local-only: one tracked by git (say, merged from someone else's branch) or one Baton has
+ * no ledger record of is never read as a handoff, whatever its `from` says.
+ */
+export function untrustedReason(db: Ledger, root: string, id: string): string | null {
+  const rel = relative(root, packetPath(root, id));
+  if (tryGit(root, ["ls-files", "--error-unmatch", "--", rel]) !== null) {
+    return `${rel} is tracked by git. Packets are local-only, so a committed packet is never read as a handoff. Remove it from git (git rm --cached ${rel}) if it is yours.`;
+  }
+  const row = db
+    .query<{ n: number }, { repo: string; id: string }>(
+      "SELECT COUNT(*) AS n FROM handoffs WHERE repo = $repo AND id = $id",
+    )
+    .get({ repo: root, id });
+  if (!row?.n) return `${rel} was not created by Baton on this machine (no ledger record).`;
+  return null;
 }
 
 export type Loaded = {
@@ -86,10 +105,6 @@ function latestRevision(root: string, id: string): { rev: number; text: string }
   return { rev, text: readFileSync(join(dir, `rev-${rev}.md`), "utf8") };
 }
 
-export function authorOf(ctx: Ctx): string {
-  return ctx.identity.agent ? ctx.identity.vendor : "person";
-}
-
 type RevisionInput = {
   ctx: Ctx;
   db: Ledger;
@@ -131,7 +146,7 @@ function storeRevision(r: RevisionInput): void {
  */
 export function syncOutsideEdits(ctx: Ctx, db: Ledger, root: string, id: string): void {
   const path = packetPath(root, id);
-  if (!existsSync(path)) return;
+  if (!existsSync(path) || untrustedReason(db, root, id)) return;
   const text = readFileSync(path, "utf8");
   const last = latestRevision(root, id);
   if (last && last.text === text) return;
@@ -258,6 +273,8 @@ export function applyEdit(
   id: string,
   edited: string,
 ): WriteResult & { changed?: boolean } {
+  const untrusted = untrustedReason(db, root, id);
+  if (untrusted) return { ok: false, issues: [untrusted] };
   syncOutsideEdits(ctx, db, root, id);
   const prev = loadPacket(root, id);
   if (!prev?.data) return { ok: false, issues: prev ? prev.issues : [`no packet ${id}`] };
@@ -267,10 +284,12 @@ export function applyEdit(
   const data: Record<string, unknown> = { ...parsed.data };
   for (const f of BATON_FIELDS) data[f] = prev.data[f];
   const author = authorOf(ctx);
-  const by = author === "person" ? "person" : "agent";
+  const by = author === "person" ? "person" : author === "unknown" ? "unknown" : "agent";
   const deadEnds: unknown[] = Array.isArray(data.dead_ends) ? [...data.dead_ends] : [];
   for (const s of struck) {
-    const reason = `rejected by the ${by === "person" ? "person" : author}${s.field ? ` (was in ${s.field})` : ""}`;
+    const who =
+      by === "person" ? "the person" : by === "unknown" ? "an unidentified session" : author;
+    const reason = `rejected by ${who}${s.field ? ` (was in ${s.field})` : ""}`;
     deadEnds.push({ approach: s.text, reason, by } satisfies DeadEnd);
   }
   if (deadEnds.length) data.dead_ends = deadEnds;
