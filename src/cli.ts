@@ -1,422 +1,205 @@
 #!/usr/bin/env bun
-import { cp, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { compileAll } from "./compile/compile.ts";
 import {
-  deliveryStatus,
-  pasteFor,
-  readState,
-  recordDelivery,
-  syncTargets,
-} from "./compile/sync.ts";
-import { listInbox, markProcessed, staleConcepts } from "./curator/inbox.ts";
-import { promote } from "./curator/promote.ts";
-import { loadKnowledge } from "./index/load.ts";
-import { KnowledgeStore } from "./index/store.ts";
-import { ingestReply, ingestZip } from "./ingest/ingest.ts";
-import { extractionPrompt } from "./ingest/prompts.ts";
-import { FsSink } from "./lib/sinks.ts";
-import { lintKnowledge } from "./lint/lint.ts";
-import { AuditLog, type Lockdown } from "./mcp/policy.ts";
-import { localStateDir } from "./mcp/runtime.ts";
-import { Tool } from "./schema/common.ts";
+  type CreateFlags,
+  handoffCreate,
+  handoffEdit,
+  handoffList,
+  handoffRead,
+  lint,
+} from "./commands/handoff.ts";
+import { importRun } from "./commands/import.ts";
+import { init } from "./commands/init.ts";
+import { status } from "./commands/status.ts";
+import { runTest } from "./commands/test.ts";
+import { accept, prepareHandoff, prepareReview } from "./desk/actions.ts";
+import { digest } from "./desk/digest.ts";
+import { prepareCommitMsg, recordCommit } from "./hooks/commit.ts";
+import { type Ledger, openLedger } from "./ledger/db.ts";
+import { type Ctx, defaultCtx, type Outcome, ok, UsageError } from "./lib/context.ts";
 
-const HELP = `kb — personal knowledge hub
+export const HELP = `baton: a shift-change desk and scorekeeper for agents from different vendors.
+It never runs, messages or steers an agent.
 
-Usage: kb <command> [args] [--json]
+  baton init [--no-hooks]                 set up .baton/, .gitignore, git hooks, agent instructions
+  baton digest [--limit n]                the desk: failing tests, commits, claims, handoffs
+  baton accept <card> [--reject] [--note] record your verdict on a commit (c-abc1234) or handoff (h-1)
+  baton prepare handoff [fields]          write a packet pre-filled from the ledger
+  baton prepare review <commit>           write a review packet with the suggested reviewer
+  baton handoff create [fields|--file f]  write a packet (agents)
+  baton handoff read <id>                 print a packet (records who picked it up)
+  baton handoff edit <id> [--file f]      redline a packet in $EDITOR; ~~strike~~ moves to dead_ends
+  baton handoff list                      list packets
+  baton lint [ids...]                     validate packets (exit 1 on a missing field)
+  baton test -- <cmd...>                  run tests and record the result
+  baton import <claude|codex> <file|->    load headless JSON output into the ledger
+  baton status                            who Baton thinks is running, and ledger counts
 
-Knowledge repo: --dir <path>, or $KB_KNOWLEDGE_DIR, or ../knowledge
+Fields: --goal --acceptance (repeat) --state in-progress|blocked --next --observation (repeat)
+        --verify <cmd> --dead-end (repeat) --decision (repeat) --constraint (repeat) --body
+Every command takes --json. Exit codes: 0 ok, 1 validation failed, 2 usage error.`;
 
-Get knowledge in
-  prompt <tool>            Print the extraction prompt to paste into a tool
-  ingest <file|->          Store a pasted extraction reply in inbox/ (--tool <tool>)
-  ingest --zip <file>      Store a ChatGPT or Claude data export in inbox/exports/ (--tool <tool>)
+const FIELD_OPTIONS = {
+  file: { type: "string" },
+  goal: { type: "string" },
+  acceptance: { type: "string", multiple: true },
+  state: { type: "string" },
+  next: { type: "string" },
+  observation: { type: "string", multiple: true },
+  verify: { type: "string" },
+  "dead-end": { type: "string", multiple: true },
+  decision: { type: "string", multiple: true },
+  constraint: { type: "string", multiple: true },
+  parent: { type: "string" },
+  "depends-on": { type: "string", multiple: true },
+  body: { type: "string" },
+} as const;
 
-Check and search
-  lint                     Validate the knowledge repo
-  search <words>           Search concepts (local, sees everything)
+const OPTIONS = {
+  json: { type: "boolean", default: false },
+  help: { type: "boolean", short: "h", default: false },
+  "no-hooks": { type: "boolean", default: false },
+  limit: { type: "string" },
+  reject: { type: "boolean", default: false },
+  note: { type: "string" },
+  editor: { type: "string" },
+  ...FIELD_OPTIONS,
+} as const;
 
-Serve it to agents
-  serve                    MCP over stdio for Claude Code and Codex
-  serve --http             Hosted MCP with OAuth (see .env.example)
-
-Deliver it
-  compile                  Write build/ (CLAUDE.md and AGENTS.md sections, paste blocks)
-  sync [--dry-run]         Update ~/.claude and ~/.codex (marked section + skills)
-  paste <tool>             Print the paste block for chatgpt, claude, gemini, muse or instinct
-  status                   How many changes behind each tool is
-
-Curate (used by the curator skill)
-  init <dir>               Create a new knowledge repo from the template
-  inbox                    List unprocessed inbox files (max 200 per run)
-  inbox done <paths...>    Move them to inbox/processed/ and log it (--note "...")
-  stale                    Concepts past their stale_after date
-  promote <files...>       Mark concepts verified by you; drafts become stable (--by human:<login>)
-
-Control
-  audit [--days N]         What each client read or wrote (default 7 days)
-  revoke <client-id>       Block one MCP client immediately
-  lockdown <off|read-only|closed>
-
-Tools: ${Tool.options.join(", ")}
-Exit codes: 0 ok, 1 check failed, 2 usage error.`;
-
-type Out = { json: boolean };
-
-function print(out: Out, data: unknown, human: string): void {
-  console.log(out.json ? JSON.stringify(data, null, 2) : human);
+async function readStdin(): Promise<string> {
+  return await new Response(Bun.stdin.stream()).text();
 }
 
-class UsageError extends Error {}
-
-function parseTool(v: string | undefined): Tool | undefined {
-  if (v === undefined) return undefined;
-  const r = Tool.safeParse(v);
-  if (!r.success)
-    throw new UsageError(`Unknown tool "${v}". Use one of: ${Tool.options.join(", ")}`);
-  return r.data;
-}
-
-async function controlsFile(): Promise<{
-  path: string;
-  data: { lockdown?: Lockdown; revoked?: string[] };
-}> {
-  const path = join(localStateDir(), "controls.json");
+/** Runs one CLI invocation. Exported so tests drive the real argument handling. */
+export async function run(
+  argv: string[],
+  ctx: Ctx,
+  db?: Ledger,
+): Promise<Outcome & { json: boolean }> {
+  const dash = argv.indexOf("--");
+  const before = dash === -1 ? argv : argv.slice(0, dash);
+  const after = dash === -1 ? [] : argv.slice(dash + 1);
+  let json = false;
   try {
-    return { path, data: JSON.parse(await readFile(path, "utf8")) };
-  } catch {
-    return { path, data: {} };
+    const { values, positionals } = parseArgs({
+      args: before,
+      options: OPTIONS,
+      allowPositionals: true,
+      strict: true,
+    });
+    json = values.json;
+    const [cmd, sub, ...rest] = positionals;
+    if (values.help || !cmd || cmd === "help") return { ...ok(null, HELP), json };
+    const ledger = () => {
+      db ??= openLedger(ctx.home);
+      return db;
+    };
+    const fields = values as CreateFlags;
+    const out = await dispatch(cmd, sub, rest, after, values, fields, ctx, ledger);
+    return { ...out, json };
+  } catch (err) {
+    if (
+      err instanceof UsageError ||
+      (err as { code?: string }).code?.startsWith("ERR_PARSE_ARGS")
+    ) {
+      return {
+        code: 2,
+        data: { ok: false, error: (err as Error).message },
+        text: `baton: ${(err as Error).message}`,
+        json,
+      };
+    }
+    throw err;
   }
 }
 
-async function saveControls(path: string, data: object): Promise<void> {
-  await mkdir(join(path, ".."), { recursive: true });
-  await writeFile(path, `${JSON.stringify(data, null, 2)}\n`);
-}
-
-export async function main(argv: string[]): Promise<number> {
-  const { values: v, positionals } = parseArgs({
-    args: argv,
-    allowPositionals: true,
-    strict: true,
-    options: {
-      json: { type: "boolean", default: false },
-      help: { type: "boolean", short: "h", default: false },
-      dir: { type: "string" },
-      tool: { type: "string" },
-      zip: { type: "string" },
-      http: { type: "boolean", default: false },
-      "dry-run": { type: "boolean", default: false },
-      note: { type: "string" },
-      by: { type: "string" },
-      days: { type: "string" },
-      limit: { type: "string" },
-    },
-  });
-  const out: Out = { json: v.json };
-  const [command = "help", ...args] = positionals;
-  const root = resolve(
-    v.dir ??
-      (command === "lint" ? args[0] : undefined) ??
-      process.env.KB_KNOWLEDGE_DIR ??
-      "../knowledge",
-  );
-
-  switch (command) {
-    case "help":
-      console.log(HELP);
-      return 0;
-
-    case "lint": {
-      const r = await lintKnowledge(root);
-      const errors = r.issues.filter((i) => i.level === "error").length;
-      const lines = r.issues.map((i) => `${i.level.padEnd(7)} ${i.file}  [${i.rule}] ${i.message}`);
-      lines.push(
-        `\n${r.ok ? "ok" : "failed"}: ${r.concepts} concepts, ${r.skills} skills, ${errors} errors, ${r.issues.length - errors} warnings`,
-      );
-      print(out, r, lines.join("\n"));
-      return r.ok ? 0 : 1;
+async function dispatch(
+  cmd: string,
+  sub: string | undefined,
+  rest: string[],
+  after: string[],
+  values: {
+    "no-hooks": boolean;
+    limit?: string | undefined;
+    reject: boolean;
+    note?: string | undefined;
+    editor?: string | undefined;
+    file?: string | undefined;
+  },
+  fields: CreateFlags,
+  ctx: Ctx,
+  ledger: () => Ledger,
+): Promise<Outcome> {
+  const needStdin = async (file: string | undefined) =>
+    file === "-" ? await readStdin() : undefined;
+  switch (cmd) {
+    case "init":
+      return init(ctx, { hooks: !values["no-hooks"], batonCmd: ctx.env.BATON_CMD });
+    case "digest": {
+      const limit = values.limit ? Number(values.limit) : undefined;
+      if (limit !== undefined && !(Number.isInteger(limit) && limit > 0))
+        throw new UsageError("--limit must be a positive integer");
+      return digest(ctx, ledger(), limit);
     }
-
-    case "prompt": {
-      const tool = parseTool(args[0] ?? v.tool);
-      if (!tool) throw new UsageError("Usage: kb prompt <tool>");
-      const text = extractionPrompt(tool);
-      print(out, { tool, prompt: text }, text);
-      return 0;
-    }
-
-    case "ingest": {
-      const tool = parseTool(v.tool);
-      if (v.zip) {
-        if (!tool) throw new UsageError("kb ingest --zip needs --tool chatgpt or --tool claude");
-        const r = await ingestZip(root, new Uint8Array(await Bun.file(v.zip).arrayBuffer()), tool);
-        print(
-          out,
-          r,
-          `Stored ${r.files.length} file(s) in ${r.dir}${r.conversations !== null ? ` (${r.conversations} conversations)` : ""}.`,
-        );
-        return 0;
+    case "accept":
+      return accept(ctx, ledger(), sub, { reject: values.reject, note: values.note });
+    case "prepare":
+      if (sub === "handoff") return prepareHandoff(ctx, ledger(), fields);
+      if (sub === "review") return prepareReview(ctx, ledger(), rest[0]);
+      throw new UsageError("usage: baton prepare handoff | baton prepare review <commit>");
+    case "handoff":
+      switch (sub) {
+        case "create":
+          return handoffCreate(ctx, ledger(), fields, await needStdin(fields.file));
+        case "read":
+          return handoffRead(ctx, ledger(), rest[0]);
+        case "edit":
+          return handoffEdit(ctx, ledger(), rest[0], { file: values.file, editor: values.editor });
+        case "list":
+          return handoffList(ctx, ledger());
+        default:
+          throw new UsageError("usage: baton handoff create|read|edit|list");
       }
-      const src = args[0];
-      if (!src) throw new UsageError("Usage: kb ingest <file|-> [--tool <tool>]");
-      const text = src === "-" ? await Bun.stdin.text() : await Bun.file(src).text();
-      const r = await ingestReply(new FsSink(root), text, {
-        tool,
-        source: src === "-" ? "stdin" : "file",
-      });
-      const human = [
-        `${r.created ? "Stored" : "Already stored"} ${r.items.length} item(s) from ${r.tool} at ${r.path}.`,
-        ...r.errors.map((e) => `  problem: ${e}`),
-        ...r.dropped.map((d) => `  dropped: ${d.title} (${d.reason})`),
-        ...(r.items.some((i) => i.flags?.length)
-          ? ["  some items look like instructions to agents; the curator will review them"]
-          : []),
-        r.complete
-          ? ""
-          : "  The reply says it was incomplete. Ask the tool for the rest and ingest that too.",
-      ].filter(Boolean);
-      print(out, r, human.join("\n"));
-      return r.items.length || !r.errors.length ? 0 : 1;
-    }
-
-    case "search": {
-      const q = args.join(" ");
-      if (!q) throw new UsageError("Usage: kb search <words>");
-      const store = new KnowledgeStore(await loadKnowledge(root));
-      const page = store.search(
-        q,
-        { allowed: ["public", "personal", "sensitive"] },
-        Number(v.limit ?? 8),
+    case "lint":
+      return lint(
+        ctx,
+        ledger(),
+        [sub, ...rest].filter((x): x is string => !!x),
       );
-      print(
-        out,
-        page,
-        page.results
-          .map((r) => `${r.id}  ${r.title}${r.verified ? "" : "  (unverified)"}\n    ${r.snippet}`)
-          .join("\n") || "No matches.",
-      );
-      return 0;
+    case "test":
+      return runTest(ctx, ledger(), after);
+    case "import": {
+      const file = rest[0];
+      if (!sub || !file) throw new UsageError("usage: baton import <claude|codex> <file|->");
+      return importRun(ctx, ledger(), sub, file, await needStdin(file));
     }
-
-    case "serve": {
-      if (v.http) {
-        const { serveHttp } = await import("./mcp/serve-http.ts");
-        const s = await serveHttp(root);
-        console.error(`kb-hub MCP listening on :${s.port} (/mcp/read, /mcp/write)`);
-        await new Promise(() => {});
+    case "hook":
+      if (sub === "prepare-commit-msg") {
+        if (!rest[0]) throw new UsageError("usage: baton hook prepare-commit-msg <file> [source]");
+        return prepareCommitMsg(ctx, rest[0], rest[1]);
       }
-      const { serveStdio } = await import("./mcp/stdio.ts");
-      await serveStdio(root, process.env.KB_CLIENT_ID ?? "local");
-      await new Promise(() => {});
-      return 0;
-    }
-
-    case "compile": {
-      const k = await loadKnowledge(root);
-      const m = await compileAll(root, k);
-      const lines = Object.entries(m.outputs).map(
-        ([_n, o]) =>
-          `${o.file}  ${o.concepts.length} concepts${o.omitted.length ? `, ${o.omitted.length} left out for size` : ""}`,
+      if (sub === "post-commit") return recordCommit(ctx, ledger());
+      throw new UsageError("usage: baton hook prepare-commit-msg|post-commit");
+    case "record-commit":
+      return recordCommit(ctx, ledger(), sub);
+    case "status":
+      return status(ctx, ledger());
+    case "claim":
+    case "release":
+    case "finding":
+    case "recommend":
+    case "report":
+      throw new UsageError(
+        `\`baton ${cmd}\` is not built yet (milestone ${cmd === "recommend" || cmd === "report" ? "M5" : "M3"})`,
       );
-      if (k.invalid.length)
-        lines.push(`skipped invalid files (run kb lint): ${k.invalid.join(", ")}`);
-      print(out, m, lines.join("\n"));
-      return 0;
-    }
-
-    case "sync": {
-      const k = await loadKnowledge(root);
-      const reports = await syncTargets(k, undefined, { dryRun: v["dry-run"] });
-      if (!v["dry-run"]) for (const r of reports) await recordDelivery(r.target, k);
-      print(
-        out,
-        reports,
-        reports
-          .map(
-            (r) =>
-              `${r.dryRun ? "[dry run] " : ""}${r.target}: ${r.conceptCount} concepts -> ${r.instructions}; skills ${r.skillsCopied.join(", ") || "none"}${r.skillsSkipped.length ? `; skipped ${r.skillsSkipped.join(", ")}` : ""}`,
-          )
-          .join("\n"),
-      );
-      return 0;
-    }
-
-    case "paste": {
-      const tool = args[0];
-      if (!tool) throw new UsageError("Usage: kb paste <chatgpt|claude|gemini|muse|instinct>");
-      const k = await loadKnowledge(root);
-      const text = pasteFor(tool, k);
-      await recordDelivery(tool, k);
-      print(out, { tool, text }, text);
-      return 0;
-    }
-
-    case "status": {
-      const s = deliveryStatus(await loadKnowledge(root), await readState());
-      print(
-        out,
-        s,
-        s
-          .map(
-            (t) =>
-              `${t.tool.padEnd(12)} ${t.changes_behind ? `${t.changes_behind} change(s) behind` : "up to date"}${t.last_delivered ? `  (last ${t.last_delivered.slice(0, 10)})` : "  (never delivered)"}`,
-          )
-          .join("\n"),
-      );
-      return 0;
-    }
-
-    case "init": {
-      const dest = resolve(args[0] ?? "");
-      if (!args[0]) throw new UsageError("Usage: kb init <dir>");
-      const existing = await readdir(dest).catch(() => []);
-      if (existing.length) throw new UsageError(`${dest} is not empty`);
-      await cp(new URL("../templates/knowledge/", import.meta.url).pathname, dest, {
-        recursive: true,
-      });
-      await rename(join(dest, "gitignore.txt"), join(dest, ".gitignore"));
-      print(
-        out,
-        { created: dest },
-        `Created a knowledge repo at ${dest}. Next: git init, push it as a private repo, and set KB_KNOWLEDGE_DIR=${dest}.`,
-      );
-      return 0;
-    }
-
-    case "inbox": {
-      if (args[0] === "done") {
-        const paths = args.slice(1);
-        if (!paths.length || !v.note)
-          throw new UsageError('Usage: kb inbox done <paths...> --note "summary"');
-        const moved = await markProcessed(root, paths, v.note);
-        print(
-          out,
-          { moved },
-          `Moved ${moved.length} file(s) to inbox/processed/ and updated knowledge/log.md.`,
-        );
-        return 0;
-      }
-      const r = await listInbox(root, Number(v.limit ?? 200));
-      print(
-        out,
-        r,
-        r.entries
-          .map(
-            (e) =>
-              `${e.kind.padEnd(10)} ${e.path}${e.suspicious ? "  (suspicious: review, do not promote)" : ""}`,
-          )
-          .join("\n") + (r.remaining ? `\n${r.remaining} more carry over to the next run.` : "") ||
-          "Inbox is empty.",
-      );
-      return 0;
-    }
-
-    case "stale": {
-      const s = staleConcepts((await loadKnowledge(root)).concepts);
-      print(
-        out,
-        s,
-        s.map((c) => `${c.id}  ${c.title}  (stale since ${c.stale_after})`).join("\n") ||
-          "Nothing is stale.",
-      );
-      return 0;
-    }
-
-    case "promote": {
-      if (!args.length || !v.by)
-        throw new UsageError("Usage: kb promote <files...> --by human:<login>");
-      const r = await promote(args, v.by);
-      print(
-        out,
-        r,
-        r.map((x) => `${x.file}: ${x.from} -> ${x.to}, verified`).join("\n") ||
-          "Nothing to promote.",
-      );
-      return 0;
-    }
-
-    case "audit": {
-      const days = Number(v.days ?? 7);
-      const since = Date.now() - days * 86_400_000;
-      const entries = (await new AuditLog(join(localStateDir(), "audit.jsonl")).read()).filter(
-        (e) => Date.parse(e.at) >= since,
-      );
-      const byClient = new Map<
-        string,
-        { calls: number; writes: number; denied: number; concepts: Set<string> }
-      >();
-      for (const e of entries) {
-        const s = byClient.get(e.client) ?? {
-          calls: 0,
-          writes: 0,
-          denied: 0,
-          concepts: new Set<string>(),
-        };
-        s.calls++;
-        if (e.tool === "flag_knowledge" || e.tool === "ingest") s.writes++;
-        if (!e.ok) s.denied++;
-        for (const id of e.concept_ids ?? []) s.concepts.add(id);
-        byClient.set(e.client, s);
-      }
-      const summary = [...byClient].map(([client, s]) => ({
-        client,
-        calls: s.calls,
-        writes: s.writes,
-        failed: s.denied,
-        concepts_read: s.concepts.size,
-      }));
-      print(
-        out,
-        { days, summary },
-        summary
-          .map(
-            (s) =>
-              `${s.client}: ${s.calls} calls, ${s.writes} writes, ${s.failed} failed, ${s.concepts_read} distinct concepts`,
-          )
-          .join("\n") || `No MCP calls in the last ${days} days.`,
-      );
-      return 0;
-    }
-
-    case "revoke": {
-      const id = args[0];
-      if (!id) throw new UsageError("Usage: kb revoke <client-id> (see kb audit for ids)");
-      const c = await controlsFile();
-      c.data.revoked = [...new Set([...(c.data.revoked ?? []), id])];
-      await saveControls(c.path, c.data);
-      print(out, c.data, `Revoked ${id}. For the hosted server also add it to KB_REVOKED_CLIENTS.`);
-      return 0;
-    }
-
-    case "lockdown": {
-      const mode = args[0] as Lockdown | undefined;
-      if (!mode || !["off", "read-only", "closed"].includes(mode))
-        throw new UsageError("Usage: kb lockdown <off|read-only|closed>");
-      const c = await controlsFile();
-      c.data.lockdown = mode;
-      await saveControls(c.path, c.data);
-      print(
-        out,
-        c.data,
-        `Lockdown is now ${mode}. For the hosted server also set KB_LOCKDOWN=${mode}.`,
-      );
-      return 0;
-    }
-
     default:
-      throw new UsageError(`Unknown command "${command}". Run kb help to see commands.`);
+      throw new UsageError(`unknown command: ${cmd} (try baton help)`);
   }
 }
 
 if (import.meta.main) {
-  try {
-    process.exit(await main(Bun.argv.slice(2)));
-  } catch (err) {
-    const usage =
-      err instanceof UsageError || (err as { code?: string }).code?.startsWith("ERR_PARSE_ARGS");
-    console.error((err as Error).message);
-    process.exit(usage ? 2 : 1);
-  }
+  const out = await run(process.argv.slice(2), defaultCtx());
+  if (out.json) console.log(JSON.stringify(out.data, null, 2));
+  else if (out.text) (out.code === 0 ? console.log : console.error)(out.text);
+  process.exit(out.code);
 }

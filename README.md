@@ -1,15 +1,54 @@
-# kb-hub
+# Baton
 
-One knowledge base for all your AI assistants.
+A shift-change desk and scorekeeper for coding agents from different vendors (Claude Code, Codex).
 
-kb-hub pulls what Claude Code, Codex, ChatGPT, Gemini, Claude, Muse, Instinct, Dots and Duet know about you into a private Git repo, has a curator agent clean it up through pull requests you approve, and serves it back to every assistant through MCP and generated files.
+You coordinate agents by triaging and editing shared artifacts, not by retyping context into chat windows:
+
+- **Handoff packets** let any agent pick up another agent's work without you re-explaining it.
+- **Redline-as-Prompt:** you edit the packet (`~~strike~~` an approach, tighten acceptance criteria), and the saved diff is what the next agent reads first.
+- **An outcome ledger** records what each agent wrote, tested and handed off, graded by real test runs, so you can later see which agent or pairing actually works.
+
+**Baton is not an orchestrator.** It never starts, messages or steers an agent. "Prepare" actions write local files and print one line for you to give an agent in its own tool.
+
+Spec: the Baton MVP spec in the project files. This repo is at milestones M0 to M2.
+
+## Quick start
 
 ```sh
 bun install
-bun run check                         # verify everything
-bun run kb lint ../knowledge          # validate a knowledge repo
+bun run check                        # deps allowlist, typecheck, lint, tests
+cd ~/code/your-repo
+bun ~/code/kb-hub/src/cli.ts init    # .baton/, .gitignore, git hooks, AGENTS.md/CLAUDE.md section
+alias baton="bun ~/code/kb-hub/src/cli.ts"   # or: bun run build, then put dist/baton on PATH
 ```
 
-- [Local setup](docs/setup.md): create your knowledge repo, ingest from each assistant, connect Claude Code and Codex.
-- [Hosted server](docs/deploy.md): OAuth-protected MCP for Claude web, Duet and ChatGPT.
-- [AGENTS.md](AGENTS.md): module map, commands and rules for agents working on this repo.
+Then, day to day:
+
+| You (the person) | Agents |
+| --- | --- |
+| `baton digest`: the desk, with failing tests, commits, claims and waiting handoffs | `baton digest --json` at session start |
+| `baton accept c-1a2b3c4` / `baton accept h-2` | `baton test -- bun test` |
+| `baton prepare handoff`, then `baton handoff edit h-3` to fill and redline it | `baton handoff create --goal ... --acceptance ... --next ... --observation ...` |
+| `baton prepare review <commit>` | `baton handoff read h-3` |
+
+Commits by an agent get `Assisted-by` and `Baton-Session` trailers from the git hook. To fill in model and token counts for headless runs:
+
+```sh
+claude -p "..." --output-format stream-json --verbose > run.jsonl && baton import claude run.jsonl
+codex exec --json "..." > run.jsonl && baton import codex run.jsonl
+```
+
+## M0: check your own logins
+
+```sh
+bun run m0            # runs one tiny task with each CLI found on PATH
+```
+
+It checks that headless JSON reports session, model, tokens, turns and tool events, and that the agent's own commit lands in the ledger under the same session. Raw outputs go to `m0-results/` (gitignored).
+
+## Where things live
+
+- `.baton/handoffs/` in each repo: packets and their revision history. **Gitignored by default.** Baton only serves packets it wrote on this machine, so a packet committed to git (say, in someone else's branch) is refused, whatever it claims.
+- `~/.baton/ledger.sqlite` (or `$BATON_HOME`): the personal ledger. Paths, hashes, counts and short sanitized test notes. Never file contents or prompts.
+
+See [AGENTS.md](AGENTS.md) for the module map and rules.
