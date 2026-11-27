@@ -1,12 +1,9 @@
 /**
  * Fails if package.json has a dependency that is not on the allowlist.
- * The budget lives in the build plan ("Dependency budget"). Adding a package means:
- * add it here with a one-line reason, note it in AGENTS.md, and get it approved in the PR.
+ * Adding a package means: add it here with a one-line reason and get it approved in the PR.
  */
 const ALLOWED: Record<string, { kind: "runtime" | "dev"; why: string }> = {
-  "@modelcontextprotocol/sdk": { kind: "runtime", why: "MCP protocol and OAuth helpers (M4)" },
-  zod: { kind: "runtime", why: "schemas; peer of the MCP SDK" },
-  fflate: { kind: "runtime", why: "reading ChatGPT/Claude export ZIPs (M2)" },
+  zod: { kind: "runtime", why: "handoff packet and import schemas" },
   typescript: { kind: "dev", why: "tsc --noEmit type checking" },
   "@biomejs/biome": { kind: "dev", why: "lint and format" },
   "@types/bun": { kind: "dev", why: "types for Bun built-ins" },
